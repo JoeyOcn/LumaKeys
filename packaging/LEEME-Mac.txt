@@ -1,0 +1,36 @@
+MidiSky para Mac
+================
+
+Qué hay en esta carpeta
+-----------------------
+- MidiSky.app        -> la app sola (no necesita Ableton)
+- MidiSky.vst3       -> el plugin VST3
+- MidiSky.component  -> el plugin Audio Unit (AU)
+
+Instalar el plugin para Ableton Live
+------------------------------------
+1. Abre Finder y en el menú "Ir" elige "Ir a la carpeta…".
+2. Escribe:  ~/Library/Audio/Plug-Ins/VST3   y copia ahí MidiSky.vst3
+3. Repite con:  ~/Library/Audio/Plug-Ins/Components   y copia ahí MidiSky.component
+4. En Ableton: Configuración > Plug-Ins > activa "Usar carpeta del sistema de Audio Units"
+   y "Usar carpeta del sistema VST3", y dale "Reescanear".
+5. MidiSky aparece en el navegador de Ableton, en Plug-Ins > Joey Ocn.
+
+Si la Mac dice que no puede abrirlo
+-----------------------------------
+Es normal en apps que no vienen de la App Store.
+- App: clic derecho sobre MidiSky.app > Abrir > Abrir.
+- Plugin: Configuración del Sistema > Privacidad y seguridad > baja hasta
+  ver el aviso de MidiSky y dale "Abrir de todos modos". Luego reescanea en Ableton.
+
+Cómo usarlo en Ableton
+----------------------
+- Solo para ver y escuchar: arrastra MidiSky a una pista MIDI, ármala y toca.
+  Trae su propio piano (lo puedes apagar con "Sonido de piano").
+- Para ver lo que tocas con OTRO instrumento: crea un Instrument Rack,
+  pon tu instrumento en una cadena y MidiSky en otra. Apaga el piano de MidiSky.
+- "MIDI" arriba: clic para pausar o reanudar lo que MidiSky escucha de Ableton.
+  No desconecta nada en Ableton.
+
+Créditos: piano Salamander Grand Piano de Alexander Holm (CC BY 3.0),
+fuente Bravura (SIL OFL), tipografía Outfit (SIL OFL), hecho con JUCE (AGPLv3).

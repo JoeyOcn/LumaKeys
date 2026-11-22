@@ -1,0 +1,37 @@
+MidiSky para Windows
+====================
+
+Qué hay en esta carpeta
+-----------------------
+- MidiSky.exe   -> la app sola (no necesita Ableton)
+- MidiSky.vst3  -> el plugin VST3 (es una carpeta, cópiala completa)
+
+Instalar el plugin para Ableton Live
+------------------------------------
+1. Copia la carpeta MidiSky.vst3 completa a:
+      C:\Program Files\Common Files\VST3
+   (Windows te va a pedir permiso de administrador: dale "Continuar".)
+2. En Ableton: Opciones > Preferencias > Plug-Ins > activa
+   "Usar carpeta del sistema VST3" y dale "Reescanear".
+3. MidiSky aparece en el navegador de Ableton, en Plug-Ins > Joey Ocn.
+
+La app sola (MidiSky.exe)
+-------------------------
+- La primera vez, Windows puede mostrar "Windows protegió tu PC".
+  Dale "Más información" > "Ejecutar de todas formas". Es normal en apps nuevas.
+- Arriba en "MIDI" eliges tu teclado o lo desconectas.
+- Ojo: en Windows un teclado MIDI solo lo puede usar un programa a la vez.
+  Si Ableton está abierto usando tu piano, usa MidiSky como plugin dentro de Ableton
+  (así no se pelean por el teclado).
+
+Cómo usarlo en Ableton
+----------------------
+- Solo para ver y escuchar: arrastra MidiSky a una pista MIDI, ármala y toca.
+  Trae su propio piano (lo puedes apagar con "Sonido de piano").
+- Para ver lo que tocas con OTRO instrumento: crea un Instrument Rack,
+  pon tu instrumento en una cadena y MidiSky en otra. Apaga el piano de MidiSky.
+- "MIDI" arriba: clic para pausar o reanudar lo que MidiSky escucha de Ableton.
+  No desconecta nada en Ableton.
+
+Créditos: piano Salamander Grand Piano de Alexander Holm (CC BY 3.0),
+fuente Bravura (SIL OFL), tipografía Outfit (SIL OFL), hecho con JUCE (AGPLv3).

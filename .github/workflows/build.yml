@@ -1,0 +1,118 @@
+name: Compilar MidiSky
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  mac:
+    name: Mac (VST3, AU y app)
+    runs-on: macos-14
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configurar
+        run: cmake -B build -G "Unix Makefiles" -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64"
+
+      - name: Compilar
+        run: cmake --build build --config Release --parallel 4
+
+      - name: Firmar (ad-hoc)
+        run: |
+          ART=build/MidiSky_artefacts/Release
+          codesign --force --deep --sign - "$ART/VST3/MidiSky.vst3"
+          codesign --force --deep --sign - "$ART/AU/MidiSky.component"
+          codesign --force --deep --sign - "$ART/Standalone/MidiSky.app"
+          lipo -info "$ART/VST3/MidiSky.vst3/Contents/MacOS/MidiSky"
+
+      - name: Probar con pluginval
+        run: |
+          curl -sSL -o pluginval.zip https://github.com/Tracktion/pluginval/releases/latest/download/pluginval_macOS.zip
+          unzip -q pluginval.zip
+          ./pluginval.app/Contents/MacOS/pluginval --strictness-level 5 --skip-gui-tests --validate-in-process \
+            --timeout-ms 300000 --validate build/MidiSky_artefacts/Release/VST3/MidiSky.vst3
+
+      - name: Probar Audio Unit (auval)
+        run: |
+          mkdir -p ~/Library/Audio/Plug-Ins/Components
+          cp -R build/MidiSky_artefacts/Release/AU/MidiSky.component ~/Library/Audio/Plug-Ins/Components/
+          killall -9 AudioComponentRegistrar || true
+          sleep 2
+          auval -v aumu Msky Jocn
+
+      - name: Empaquetar
+        run: |
+          ART=build/MidiSky_artefacts/Release
+          mkdir -p dist/MidiSky-Mac
+          cp -R "$ART/VST3/MidiSky.vst3" "$ART/AU/MidiSky.component" "$ART/Standalone/MidiSky.app" dist/MidiSky-Mac/
+          cp packaging/LEEME-Mac.txt dist/MidiSky-Mac/LEEME.txt
+          cd dist && ditto -c -k --sequesterRsrc --keepParent MidiSky-Mac MidiSky-Mac.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MidiSky-Mac
+          path: dist/MidiSky-Mac.zip
+
+  windows:
+    name: Windows (VST3 y app)
+    runs-on: windows-2022
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configurar
+        run: cmake -B build -G "Visual Studio 17 2022" -A x64
+
+      - name: Compilar
+        run: cmake --build build --config Release --parallel 4
+
+      - name: Probar con pluginval
+        shell: pwsh
+        run: |
+          Invoke-WebRequest -Uri https://github.com/Tracktion/pluginval/releases/latest/download/pluginval_Windows.zip -OutFile pluginval.zip
+          Expand-Archive pluginval.zip -DestinationPath pluginval
+          $p = Start-Process -FilePath .\pluginval\pluginval.exe -ArgumentList '--strictness-level','5','--skip-gui-tests','--validate-in-process','--timeout-ms','300000','--validate','build\MidiSky_artefacts\Release\VST3\MidiSky.vst3' -NoNewWindow -Wait -PassThru
+          if ($p.ExitCode -ne 0) { exit $p.ExitCode }
+
+      - name: Empaquetar
+        shell: pwsh
+        run: |
+          $art = "build\MidiSky_artefacts\Release"
+          New-Item -ItemType Directory -Force -Path dist\MidiSky-Windows | Out-Null
+          Copy-Item -Recurse "$art\VST3\MidiSky.vst3" dist\MidiSky-Windows\
+          Copy-Item "$art\Standalone\MidiSky.exe" dist\MidiSky-Windows\
+          Copy-Item packaging\LEEME-Windows.txt dist\MidiSky-Windows\LEEME.txt
+          Compress-Archive -Path dist\MidiSky-Windows -DestinationPath dist\MidiSky-Windows.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MidiSky-Windows
+          path: dist/MidiSky-Windows.zip
+
+  publicar:
+    name: Publicar descargas
+    needs: [mac, windows]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Crear la versión descargable
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete ultima-version --yes --cleanup-tag -R "${{ github.repository }}" || true
+          gh release create ultima-version dist/MidiSky-Mac.zip dist/MidiSky-Windows.zip \
+            -R "${{ github.repository }}" --target "${{ github.sha }}" \
+            --title "MidiSky · última versión" \
+            --notes "Descarga MidiSky-Windows.zip (Windows) o MidiSky-Mac.zip (Mac). Adentro viene un LEEME.txt con los pasos para instalarlo en Ableton."
