@@ -63,8 +63,9 @@ jobs:
           cp -R "$ART/AU/MidiSky.component" "$ROOT/Library/Audio/Plug-Ins/Components/"
           cp -R "$ART/Standalone/MidiSky.app" "$ROOT/Applications/"
           pkgbuild --analyze --root "$ROOT" comp.plist
-          n=$(/usr/libexec/PlistBuddy -c "Print" comp.plist | grep -c "RootRelativeBundlePath")
-          for ((i=0; i<n; i++)); do /usr/libexec/PlistBuddy -c "Set :$i:BundleIsRelocatable false" comp.plist; done
+          plutil -convert xml1 comp.plist
+          sed -i '' -e '/<key>BundleIsRelocatable<\/key>/{n;s/<true\/>/<false\/>/;}' comp.plist
+          grep -A1 BundleIsRelocatable comp.plist || true
           pkgbuild --root "$ROOT" --component-plist comp.plist --identifier com.joeyocn.midisky \
             --version 1.0.0 --install-location / dist/MidiSky-Instalador-Mac.pkg
           ls -la dist
