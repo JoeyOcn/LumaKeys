@@ -1,6 +1,10 @@
 MidiSky para Windows
 ====================
 
+Lo más fácil: usa el instalador (MidiSky-Instalador-Windows.exe).
+Ábrelo, dale "Siguiente" y listo. Pone el plugin donde Ableton lo busca solo.
+Lo de abajo es solo si prefieres copiarlo a mano.
+
 Qué hay en esta carpeta
 -----------------------
 - MidiSky.exe   -> la app sola (no necesita Ableton)

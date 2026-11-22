@@ -54,10 +54,27 @@ jobs:
           cp packaging/LEEME-Mac.txt dist/MidiSky-Mac/LEEME.txt
           cd dist && ditto -c -k --sequesterRsrc --keepParent MidiSky-Mac MidiSky-Mac.zip
 
+      - name: Crear el instalador (.pkg)
+        run: |
+          ART=build/MidiSky_artefacts/Release
+          ROOT=pkgroot
+          mkdir -p "$ROOT/Library/Audio/Plug-Ins/VST3" "$ROOT/Library/Audio/Plug-Ins/Components" "$ROOT/Applications"
+          cp -R "$ART/VST3/MidiSky.vst3" "$ROOT/Library/Audio/Plug-Ins/VST3/"
+          cp -R "$ART/AU/MidiSky.component" "$ROOT/Library/Audio/Plug-Ins/Components/"
+          cp -R "$ART/Standalone/MidiSky.app" "$ROOT/Applications/"
+          pkgbuild --analyze --root "$ROOT" comp.plist
+          n=$(/usr/libexec/PlistBuddy -c "Print" comp.plist | grep -c "RootRelativeBundlePath")
+          for ((i=0; i<n; i++)); do /usr/libexec/PlistBuddy -c "Set :$i:BundleIsRelocatable false" comp.plist; done
+          pkgbuild --root "$ROOT" --component-plist comp.plist --identifier com.joeyocn.midisky \
+            --version 1.0.0 --install-location / dist/MidiSky-Instalador-Mac.pkg
+          ls -la dist
+
       - uses: actions/upload-artifact@v4
         with:
           name: MidiSky-Mac
-          path: dist/MidiSky-Mac.zip
+          path: |
+            dist/MidiSky-Mac.zip
+            dist/MidiSky-Instalador-Mac.pkg
 
   windows:
     name: Windows (VST3 y app)
@@ -90,10 +107,20 @@ jobs:
           Copy-Item packaging\LEEME-Windows.txt dist\MidiSky-Windows\LEEME.txt
           Compress-Archive -Path dist\MidiSky-Windows -DestinationPath dist\MidiSky-Windows.zip
 
+      - name: Crear el instalador
+        shell: pwsh
+        run: |
+          choco install innosetup --no-progress -y
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" packaging\windows\MidiSky.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Get-ChildItem dist
+
       - uses: actions/upload-artifact@v4
         with:
           name: MidiSky-Windows
-          path: dist/MidiSky-Windows.zip
+          path: |
+            dist/MidiSky-Windows.zip
+            dist/MidiSky-Instalador-Windows.exe
 
   publicar:
     name: Publicar descargas
@@ -112,7 +139,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release delete ultima-version --yes --cleanup-tag -R "${{ github.repository }}" || true
-          gh release create ultima-version dist/MidiSky-Mac.zip dist/MidiSky-Windows.zip \
+          gh release create ultima-version dist/MidiSky-Instalador-Windows.exe dist/MidiSky-Instalador-Mac.pkg dist/MidiSky-Mac.zip dist/MidiSky-Windows.zip \
             -R "${{ github.repository }}" --target "${{ github.sha }}" \
             --title "MidiSky · última versión" \
-            --notes "Descarga MidiSky-Windows.zip (Windows) o MidiSky-Mac.zip (Mac). Adentro viene un LEEME.txt con los pasos para instalarlo en Ableton."
+            --notes "Lo más fácil: descarga el instalador. Windows: MidiSky-Instalador-Windows.exe. Mac: MidiSky-Instalador-Mac.pkg. Ábrelo, dale Siguiente y listo; al abrir Ableton, MidiSky ya aparece en tus plugins. Los .zip son la versión para copiar a mano."

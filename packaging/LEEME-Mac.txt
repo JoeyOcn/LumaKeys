@@ -1,6 +1,10 @@
 MidiSky para Mac
 ================
 
+Lo más fácil: usa el instalador (MidiSky-Instalador-Mac.pkg).
+Clic derecho > Abrir > Abrir, luego "Continuar" e "Instalar". Pone el plugin
+donde Ableton lo busca solo. Lo de abajo es solo si prefieres copiarlo a mano.
+
 Qué hay en esta carpeta
 -----------------------
 - MidiSky.app        -> la app sola (no necesita Ableton)
