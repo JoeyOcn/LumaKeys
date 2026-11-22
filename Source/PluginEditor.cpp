@@ -573,7 +573,7 @@ void MidiSkyEditor::showMainMenu()
     chordsMenu.addItem (13, U8 ("Con séptima"), true, prefs->sevenths);
 
     PopupMenu m;
-    m.addSubMenu ("Skins", skinsMenu);
+    m.addSubMenu ("Color de la luz (skins)", skinsMenu);
     m.addItem (6, prefs->dark ? U8 ("Cambiar a modo día") : U8 ("Cambiar a modo noche"));
     m.addSeparator();
     m.addSubMenu ("Nombres de las notas", namesMenu);
