@@ -41,10 +41,12 @@ struct UiContext
 //==============================================================================
 namespace draw
 {
-    void glassPanel (juce::Graphics&, juce::Rectangle<float>, const Palette&, float radius = 16.0f);
-    void title (juce::Graphics&, juce::Rectangle<float> area, const juce::String& text, const Palette&, const Fonts&, juce::Colour textColour);
-    juce::Path star (juce::Point<float> c, float r, float inner = 0.32f);
-    void stars (juce::Graphics&, juce::Rectangle<float>, int count, int seed, juce::Colour tint, float alphaScale);
+    void plate  (juce::Graphics&, juce::Rectangle<float>, const Palette&, float radius = 8.0f);
+    void well   (juce::Graphics&, juce::Rectangle<float>, const Palette&, float radius = 6.0f);
+    void screen (juce::Graphics&, juce::Rectangle<float>, const Palette&, float radius = 8.0f);
+    void caption (juce::Graphics&, juce::Rectangle<float> area, const juce::String& text, juce::Colour, const Fonts&);
+    void stars (juce::Graphics&, juce::Rectangle<float>, int count, int seed, juce::Colour tint);
+    void led (juce::Graphics&, juce::Point<float> c, float r, juce::Colour, bool on);
 }
 
 //==============================================================================
@@ -72,6 +74,7 @@ public:
 
 private:
     juce::Rectangle<float> chipArea() const;
+    juce::Rectangle<float> screenArea() const;
     juce::Rectangle<float> chipBounds (int i, int count) const;
     UiContext& ctx;
     int hoverChip = -1;

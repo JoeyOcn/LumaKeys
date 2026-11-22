@@ -10,11 +10,11 @@ using namespace juce;
 void MidiSkyLook::setPalette (const Palette& p)
 {
     pal = p;
-    const auto menuBg = p.dark ? Colour (0xff10142a) : Colour (0xfff8faff);
+    const auto menuBg = p.dark ? Colour (0xff1d1f23) : Colour (0xfff1f2f4);
     setColour (PopupMenu::backgroundColourId, menuBg);
     setColour (PopupMenu::textColourId, p.text);
     setColour (PopupMenu::headerTextColourId, p.dim);
-    setColour (PopupMenu::highlightedBackgroundColourId, p.a.withAlpha (0.35f));
+    setColour (PopupMenu::highlightedBackgroundColourId, p.accent.withAlpha (0.30f));
     setColour (PopupMenu::highlightedTextColourId, p.dark ? Colours::white : p.text);
     setColour (ResizableWindow::backgroundColourId, menuBg);
     setColour (ColourSelector::backgroundColourId, Colours::transparentBlack);
@@ -24,7 +24,7 @@ void MidiSkyLook::setPalette (const Palette& p)
     setColour (Label::textColourId, p.text);
     setColour (AlertWindow::backgroundColourId, menuBg);
     setColour (AlertWindow::textColourId, p.text);
-    setColour (TextButton::buttonColourId, p.a.withAlpha (0.25f));
+    setColour (TextButton::buttonColourId, p.plate);
     setColour (TextButton::textColourOffId, p.text);
 }
 
@@ -32,9 +32,9 @@ void MidiSkyLook::drawCallOutBoxBackground (CallOutBox&, Graphics& g, const Path
 {
     g.setColour (Colours::black.withAlpha (0.25f));
     g.fillPath (path, AffineTransform::translation (0.0f, 3.0f));
-    g.setColour (pal.dark ? Colour (0xff10142a) : Colour (0xfff8faff));
+    g.setColour (pal.dark ? Colour (0xff1d1f23) : Colour (0xfff1f2f4));
     g.fillPath (path);
-    g.setColour (pal.a.withAlpha (0.45f));
+    g.setColour (pal.plateEdge);
     g.strokePath (path, PathStrokeType (1.0f));
 }
 
@@ -208,34 +208,18 @@ void MidiSkyEditor::rebuildBackground()
 
     const auto& pal = vis.pal;
     const auto b = Rectangle<float> (0.0f, 0.0f, (float) w, (float) h);
-    ColourGradient sky (pal.skyTop, 0.0f, 0.0f, pal.skyBottom, 0.0f, (float) h, false);
-    g.setGradientFill (sky);
+    ColourGradient body (pal.bodyTop, 0.0f, 0.0f, pal.bodyBottom, 0.0f, (float) h, false);
+    g.setGradientFill (body);
     g.fillRect (b);
 
-    if (pal.dark)
+    // Grano fino, como metal anodizado
+    Random rng (99);
+    const int grains = (int) (b.getWidth() * b.getHeight() / 14.0f);
+    for (int i = 0; i < grains; ++i)
     {
-        // Nubes de aurora
-        ColourGradient a1 (pal.a.withAlpha (0.16f), b.getWidth() * 0.18f, b.getHeight() * 0.12f,
-                           pal.a.withAlpha (0.0f), b.getWidth() * 0.18f + b.getWidth() * 0.45f, b.getHeight() * 0.12f, true);
-        g.setGradientFill (a1);
-        g.fillRect (b);
-        ColourGradient a2 (pal.b.withAlpha (0.14f), b.getWidth() * 0.86f, b.getHeight() * 0.55f,
-                           pal.b.withAlpha (0.0f), b.getWidth() * 0.86f + b.getWidth() * 0.42f, b.getHeight() * 0.55f, true);
-        g.setGradientFill (a2);
-        g.fillRect (b);
-        draw::stars (g, b, (int) (b.getWidth() * b.getHeight() / 5200.0f), 1234, pal.b, 0.9f);
-    }
-    else
-    {
-        // Sol suave
-        ColourGradient sun (Colours::white.withAlpha (0.85f), b.getWidth() * 0.82f, -b.getHeight() * 0.05f,
-                            Colours::white.withAlpha (0.0f), b.getWidth() * 0.82f + b.getWidth() * 0.5f, -b.getHeight() * 0.05f, true);
-        g.setGradientFill (sun);
-        g.fillRect (b);
-        ColourGradient tint (pal.a.withAlpha (0.12f), b.getWidth() * 0.1f, b.getHeight() * 0.9f,
-                             pal.a.withAlpha (0.0f), b.getWidth() * 0.1f + b.getWidth() * 0.5f, b.getHeight() * 0.9f, true);
-        g.setGradientFill (tint);
-        g.fillRect (b);
+        const bool light = rng.nextBool();
+        g.setColour ((light ? Colours::white : Colours::black).withAlpha (pal.dark ? 0.035f : 0.045f));
+        g.fillRect (rng.nextFloat() * b.getWidth(), rng.nextFloat() * b.getHeight(), 1.0f, 1.0f);
     }
 }
 
@@ -244,7 +228,7 @@ void MidiSkyEditor::paint (Graphics& g)
     if (background.isValid())
         g.drawImage (background, getLocalBounds().toFloat());
     else
-        g.fillAll (vis.pal.skyTop);
+        g.fillAll (vis.pal.bodyTop);
 }
 
 void MidiSkyEditor::resized()
@@ -320,7 +304,7 @@ void MidiSkyEditor::updateKeyState (bool& keyChanged)
         vis.diatonic = theory::diatonicChords (vis.keyRoot, vis.scale, vis.sevenths, vis.latin);
 
         const bool latin = vis.latin;
-        top.keyButton.setValueText ((vis.autoKey ? U8 ("Auto · ") : String()) + theory::pcName (vis.keyRoot, vis.sig, latin));
+        top.keyButton.setValueText (theory::pcName (vis.keyRoot, vis.sig, latin) + (vis.autoKey ? U8 ("  (auto)") : String()));
         top.scaleButton.setValueText (U8 (theory::scales()[(size_t) vis.scale].name));
 
         lastRoot = vis.keyRoot; lastScale = vis.scale; lastLatin = vis.latin;
@@ -624,14 +608,15 @@ void MidiSkyEditor::showMainMenu()
 void MidiSkyEditor::showSkinPicker()
 {
     auto picker = std::make_unique<SkinPicker> (ctx, prefs->skin);
-    picker->onPick = [this] (int i)
+    Component::SafePointer<MidiSkyEditor> safe (this);
+    picker->onPick = [this, safe] (int i)
     {
         prefs->skin = i;
         prefs->save();
         if (skins()[(size_t) i].custom)
-            MessageManager::callAsync ([sp = Component::SafePointer<MidiSkyEditor> (this)]
+            MessageManager::callAsync ([safe]
             {
-                if (sp != nullptr) sp->showColourPicker();
+                if (safe != nullptr) safe->showColourPicker();
             });
     };
     auto area = getLocalArea (&strip, strip.skinButton.getBounds());

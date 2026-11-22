@@ -29,14 +29,15 @@ juce::Font Fonts::music (float emPixels) const
 const std::vector<Skin>& skins()
 {
     static const std::vector<Skin> s {
-        { "Noche",          juce::Colour (0xff5b8cff), juce::Colour (0xffb07cff) },
-        { "Aurora",         juce::Colour (0xff2bf0b5), juce::Colour (0xff6c7bff) },
-        { "Atardecer",      juce::Colour (0xffff7a50), juce::Colour (0xffffc54d) },
-        { "Nebulosa",       juce::Colour (0xffff4fb8), juce::Colour (0xff7d5bff) },
-        { "Amanecer",       juce::Colour (0xffffb070), juce::Colour (0xffff6e9c) },
-        { "Tormenta",       juce::Colour (0xff62d8ff), juce::Colour (0xffd6f3ff) },
-        { "Arcoíris",       juce::Colour (0xffff5a5a), juce::Colour (0xff5a8cff), true },
-        { "Personalizado",  juce::Colour (0xff4de1ff), juce::Colour (0xff4de1ff), false, true },
+        { "Celeste",        juce::Colour (0xff62bfff) },
+        { "Ámbar",          juce::Colour (0xffffb23e) },
+        { "Fósforo",        juce::Colour (0xff5ef2a0) },
+        { "Rosa",           juce::Colour (0xffff5c9a) },
+        { "Violeta",        juce::Colour (0xffa58cff) },
+        { "Coral",          juce::Colour (0xffff6f52) },
+        { "Hielo",          juce::Colour (0xffd6e9ff) },
+        { "Arcoíris",       juce::Colour (0xffff6b6b), true },
+        { "Personalizado",  juce::Colour (0xff4de1ff), false, true },
     };
     return s;
 }
@@ -45,14 +46,12 @@ juce::Colour Palette::noteColour (int midiNote) const
 {
     if (rainbow)
     {
+        // Cada nota con su color, ordenadas por quintas: los acordes consonantes quedan en colores vecinos.
         const int pc = ((midiNote % 12) + 12) % 12;
-        // Cada nota de la escala cromática con su propio color, ordenado por quintas para que
-        // los acordes consonantes queden en colores vecinos.
         const float pos = (float) ((pc * 7) % 12) / 12.0f;
-        return juce::Colour::fromHSV (pos, dark ? 0.72f : 0.80f, 1.0f, 1.0f);
+        return juce::Colour::fromHSV (pos, 0.62f, 1.0f, 1.0f);
     }
-    const float t = juce::jlimit (0.0f, 1.0f, (float) (midiNote - 21) / 87.0f);
-    return a.interpolatedWith (b, t);
+    return accent;
 }
 
 //==============================================================================
@@ -95,62 +94,57 @@ void Prefs::save()
 Palette Prefs::palette() const
 {
     Palette p;
-    const auto& s = skins()[(size_t) skin];
+    const auto& s = skins()[(size_t) juce::jlimit (0, (int) skins().size() - 1, skin)];
     p.dark = dark;
     p.rainbow = s.rainbow;
-
-    if (s.custom)
-    {
-        p.a = custom;
-        p.b = custom.withRotatedHue (0.10f).withMultipliedBrightness (dark ? 1.0f : 0.92f);
-    }
-    else
-    {
-        p.a = s.a;
-        p.b = s.b;
-    }
+    p.accent = s.custom ? custom : s.light;
+    if (p.rainbow) p.accent = juce::Colour (0xffe9e3d6);
+    p.onAccent = p.accent.getPerceivedBrightness() > 0.55f ? juce::Colour (0xff111216) : juce::Colours::white;
 
     if (dark)
     {
-        p.skyTop       = juce::Colour (0xff050817).interpolatedWith (p.a, 0.10f);
-        p.skyBottom    = juce::Colour (0xff0d0a22).interpolatedWith (p.b, 0.13f);
-        p.panel        = juce::Colours::white.withAlpha (0.045f);
-        p.panelEdge    = juce::Colours::white.withAlpha (0.10f);
-        p.panelShine   = juce::Colours::white.withAlpha (0.05f);
-        p.text         = juce::Colour (0xffeef2ff);
-        p.dim          = juce::Colour (0xff9aa6c8);
-        p.faint        = juce::Colours::white.withAlpha (0.22f);
-        p.keyWhite     = juce::Colour (0xffe6eaf4);
-        p.keyWhiteShade= juce::Colour (0xffb9c0d4);
-        p.keyEdge      = juce::Colour (0xff3a4160);
-        p.keyBlack     = juce::Colour (0xff121522);
-        p.keyBlackTop  = juce::Colour (0xff2b3047);
-        p.ink          = juce::Colour (0xffdfe5f7);
-        p.screenTop    = juce::Colour (0xff04050d).interpolatedWith (p.a, 0.06f);
-        p.screenBottom = juce::Colour (0xff070817).interpolatedWith (p.b, 0.12f);
+        p.bodyTop       = juce::Colour (0xff1b1c20);
+        p.bodyBottom    = juce::Colour (0xff121316);
+        p.plate         = juce::Colour (0xff202227);
+        p.plateEdge     = juce::Colour (0xff0a0b0d);
+        p.plateHighlight= juce::Colours::white.withAlpha (0.07f);
+        p.well          = juce::Colour (0xff15161a);
+        p.wellEdge      = juce::Colour (0xff08090b);
+        p.text          = juce::Colour (0xffe8e9ec);
+        p.dim           = juce::Colour (0xff8b9099);
+        p.faint         = juce::Colours::white.withAlpha (0.13f);
+        p.keyWhite      = juce::Colour (0xffeeeeea);
+        p.keyWhiteShade = juce::Colour (0xffcfd0cc);
+        p.keyEdge       = juce::Colour (0xff6d7078);
+        p.keyBlack      = juce::Colour (0xff0e0f12);
+        p.keyBlackTop   = juce::Colour (0xff2a2c32);
+        p.ink           = juce::Colour (0xffd9dbe0);
     }
     else
     {
-        p.skyTop       = juce::Colour (0xffb9d8ff).interpolatedWith (p.a, 0.14f);
-        p.skyBottom    = juce::Colour (0xfff3f7ff).interpolatedWith (p.b, 0.07f);
-        p.panel        = juce::Colours::white.withAlpha (0.66f);
-        p.panelEdge    = juce::Colour (0xff0b1a3a).withAlpha (0.10f);
-        p.panelShine   = juce::Colours::white.withAlpha (0.55f);
-        p.text         = juce::Colour (0xff111c38);
-        p.dim          = juce::Colour (0xff56637f);
-        p.faint        = juce::Colour (0xff0b1a3a).withAlpha (0.18f);
-        p.keyWhite     = juce::Colour (0xfffbfcff);
-        p.keyWhiteShade= juce::Colour (0xffd5dbe8);
-        p.keyEdge      = juce::Colour (0xff9aa3ba);
-        p.keyBlack     = juce::Colour (0xff1b1f30);
-        p.keyBlackTop  = juce::Colour (0xff3b4159);
-        p.ink          = juce::Colour (0xff1a2340);
-        p.screenTop    = juce::Colour (0xff0d1838).interpolatedWith (p.a, 0.10f);
-        p.screenBottom = juce::Colour (0xff1c2a5a).interpolatedWith (p.b, 0.16f);
+        p.bodyTop       = juce::Colour (0xffd8dadd);
+        p.bodyBottom    = juce::Colour (0xffc8cbcf);
+        p.plate         = juce::Colour (0xffe7e8ea);
+        p.plateEdge     = juce::Colour (0xff9da2aa);
+        p.plateHighlight= juce::Colours::white.withAlpha (0.85f);
+        p.well          = juce::Colour (0xffd2d5d9);
+        p.wellEdge      = juce::Colour (0xffa3a8b0);
+        p.text          = juce::Colour (0xff1c1e22);
+        p.dim           = juce::Colour (0xff5d636c);
+        p.faint         = juce::Colour (0xff1c1e22).withAlpha (0.16f);
+        p.keyWhite      = juce::Colour (0xfffbfbf8);
+        p.keyWhiteShade = juce::Colour (0xffdfe0dc);
+        p.keyEdge       = juce::Colour (0xff8d929a);
+        p.keyBlack      = juce::Colour (0xff15161a);
+        p.keyBlackTop   = juce::Colour (0xff3a3d44);
+        p.ink           = juce::Colour (0xff1d1f24);
     }
 
-    p.screenEdge = p.a.withAlpha (dark ? 0.30f : 0.45f);
-    p.screenText = juce::Colour (0xfff3f6ff);
-    p.screenDim  = juce::Colour (0xffa9b4d6);
+    p.felt        = juce::Colour (0xff6e1d26);
+    p.screen      = juce::Colour (0xff07080a);
+    p.screenEdge  = juce::Colour (0xff000000);
+    p.screenText  = p.rainbow ? juce::Colour (0xfff1eee6) : p.accent.interpolatedWith (juce::Colours::white, 0.35f);
+    p.screenDim   = p.screenText.withAlpha (0.58f);
+    p.screenFaint = p.screenText.withAlpha (0.16f);
     return p;
 }

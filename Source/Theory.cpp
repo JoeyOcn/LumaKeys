@@ -2,6 +2,7 @@
 
 namespace theory
 {
+    static juce::String U8 (const char* s) { return juce::String::fromUTF8 (s); }
     static const int naturalPc[7] = { 0, 2, 4, 5, 7, 9, 11 };
     static const int sharpOrder[7] = { 3, 0, 4, 1, 5, 2, 6 }; // F C G D A E B
     static const int flatOrder[7]  = { 6, 2, 5, 1, 4, 0, 3 }; // B E A D G C F
@@ -230,7 +231,7 @@ namespace theory
                 }
 
                 if (score < 0) continue;
-                if (r == pcOf (bassPc)) score += 12;
+                if (bassPc >= 0 && r == pcOf (bassPc)) score += 12;
 
                 if (score > bestScore)
                 {
@@ -244,10 +245,27 @@ namespace theory
         }
 
         if (! best.valid)
+        {
+            // Acorde con un bajo ajeno (ej. G7 con Do en el bajo = G7/C)
+            const int b = pcOf (bassPc);
+            const auto upper = (uint16_t) (pcMask & ~(1u << (unsigned) b));
+            if ((pcMask & (1u << (unsigned) b)) != 0 && countBits (upper) >= 3)
+            {
+                auto c = detectChord (upper, -1, sig, latin);
+                if (c.valid)
+                {
+                    c.bass = b;
+                    c.symbol << "/" << pcName (b, sig, latin);
+                    c.inversion = "con bajo en " + pcName (b, sig, true);
+                    c.quality << U8 (" (bajo fuera del acorde)");
+                }
+                return c;
+            }
             return best;
+        }
 
         const auto& t = T[(size_t) best.templ];
-        best.bass = pcOf (bassPc);
+        best.bass = bassPc >= 0 ? pcOf (bassPc) : best.root;
         best.q = t.q;
         best.hasSeventh = t.seventh;
         best.suffix = juce::String (juce::CharPointer_UTF8 (t.suffix));
@@ -265,7 +283,7 @@ namespace theory
         else if (bi == 3 || bi == 4)                   best.inversion = juce::String (juce::CharPointer_UTF8 ("1ª inversión"));
         else if (bi == 6 || bi == 7 || bi == 8)        best.inversion = juce::String (juce::CharPointer_UTF8 ("2ª inversión"));
         else if (bi == 9 || bi == 10 || bi == 11)      best.inversion = juce::String (juce::CharPointer_UTF8 ("3ª inversión"));
-        else                                           best.inversion = "bajo en " + pcName (best.bass, sig, latin);
+        else                                           best.inversion = "bajo en " + pcName (best.bass, sig, true);
 
         return best;
     }

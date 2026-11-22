@@ -19,10 +19,11 @@ struct Fonts
 };
 
 //==============================================================================
+// Una skin es el color de la luz: teclas encendidas, pantalla y acentos.
 struct Skin
 {
     const char* name;
-    juce::Colour a, b;
+    juce::Colour light;
     bool rainbow = false;
     bool custom = false;
 };
@@ -33,18 +34,25 @@ struct Palette
 {
     bool dark = true;
     bool rainbow = false;
-    juce::Colour a, b;
+    juce::Colour accent;      // color de la luz
+    juce::Colour onAccent;    // texto encima del color de la luz
 
-    juce::Colour skyTop, skyBottom;
-    juce::Colour panel, panelEdge, panelShine;
-    juce::Colour screenTop, screenBottom, screenEdge;
+    // Cuerpo del aparato
+    juce::Colour bodyTop, bodyBottom;
+    juce::Colour plate, plateEdge, plateHighlight;
+    juce::Colour well, wellEdge;
+
+    // Texto sobre el cuerpo
     juce::Colour text, dim, faint;
-    juce::Colour screenText, screenDim;
-    juce::Colour keyWhite, keyWhiteShade, keyEdge, keyBlack, keyBlackTop;
-    juce::Colour ink; // tinta del pentagrama
+
+    // Pantalla
+    juce::Colour screen, screenEdge, screenText, screenDim, screenFaint;
+
+    // Teclado y pentagrama
+    juce::Colour keyWhite, keyWhiteShade, keyEdge, keyBlack, keyBlackTop, felt;
+    juce::Colour ink;
 
     juce::Colour noteColour (int midiNote) const;
-    juce::Colour accent() const { return a; }
 };
 
 //==============================================================================

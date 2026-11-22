@@ -7,64 +7,96 @@ using namespace juce;
 //==============================================================================
 namespace draw
 {
-    void glassPanel (Graphics& g, Rectangle<float> r, const Palette& pal, float radius)
+    void plate (Graphics& g, Rectangle<float> r, const Palette& pal, float radius)
     {
-        g.setColour (pal.panel);
+        g.setColour (pal.plate);
         g.fillRoundedRectangle (r, radius);
-
-        ColourGradient shine (pal.panelShine, r.getX(), r.getY(),
-                              pal.panelShine.withAlpha (0.0f), r.getX(), r.getY() + r.getHeight() * 0.45f, false);
-        g.setGradientFill (shine);
-        g.fillRoundedRectangle (r, radius);
-
-        g.setColour (pal.panelEdge);
+        g.setColour (pal.plateHighlight);
+        g.fillRect (r.getX() + radius, r.getY() + 1.0f, r.getWidth() - radius * 2.0f, 1.0f);
+        g.setColour (pal.plateEdge);
         g.drawRoundedRectangle (r.reduced (0.5f), radius, 1.0f);
     }
 
-    Path star (Point<float> c, float r, float inner)
+    void well (Graphics& g, Rectangle<float> r, const Palette& pal, float radius)
     {
-        Path p;
-        const float ri = r * inner;
-        for (int i = 0; i < 8; ++i)
+        g.setColour (pal.well);
+        g.fillRoundedRectangle (r, radius);
         {
-            const float ang = MathConstants<float>::pi * 0.25f * (float) i - MathConstants<float>::halfPi;
-            const float rr = (i % 2 == 0) ? r : ri;
-            const auto pt = c + Point<float> (std::cos (ang) * rr, std::sin (ang) * rr);
-            if (i == 0) p.startNewSubPath (pt); else p.lineTo (pt);
+            Graphics::ScopedSaveState ss (g);
+            Path clip;
+            clip.addRoundedRectangle (r, radius);
+            g.reduceClipRegion (clip);
+            ColourGradient sh (Colours::black.withAlpha (pal.dark ? 0.45f : 0.12f), r.getX(), r.getY(),
+                               Colours::black.withAlpha (0.0f), r.getX(), r.getY() + 7.0f, false);
+            g.setGradientFill (sh);
+            g.fillRect (r.withHeight (7.0f));
         }
-        p.closeSubPath();
-        return p;
+        g.setColour (pal.wellEdge);
+        g.drawRoundedRectangle (r.reduced (0.5f), radius, 1.0f);
+        g.setColour (pal.plateHighlight);
+        g.fillRect (r.getX() + radius, r.getBottom(), r.getWidth() - radius * 2.0f, 1.0f);
     }
 
-    void title (Graphics& g, Rectangle<float> area, const String& text, const Palette& pal, const Fonts& fonts, Colour textColour)
+    void screen (Graphics& g, Rectangle<float> r, const Palette& pal, float radius)
     {
-        const float h = area.getHeight();
-        const auto c = Point<float> (area.getX() + h * 0.35f, area.getCentreY());
-        ColourGradient grad (pal.a, c.x - 5, c.y - 5, pal.b, c.x + 5, c.y + 5, false);
-        g.setGradientFill (grad);
-        g.fillPath (star (c, h * 0.36f, 0.3f));
-
-        g.setColour (textColour);
-        g.setFont (fonts.ui (h * 0.74f, 1).withExtraKerningFactor (0.06f));
-        g.drawText (text, area.withTrimmedLeft (h * 0.9f), Justification::centredLeft, false);
+        g.setColour (pal.screen);
+        g.fillRoundedRectangle (r, radius);
+        {
+            Graphics::ScopedSaveState ss (g);
+            Path clip;
+            clip.addRoundedRectangle (r, radius);
+            g.reduceClipRegion (clip);
+            // viñeta y reflejo del vidrio
+            const auto c = r.getCentre();
+            ColourGradient vig (Colours::transparentBlack, c.x, c.y, Colours::black.withAlpha (0.55f), c.x + r.getWidth() * 0.62f, c.y, true);
+            g.setGradientFill (vig);
+            g.fillRect (r);
+            ColourGradient ref (Colours::white.withAlpha (0.035f), r.getX(), r.getY(), Colours::white.withAlpha (0.0f), r.getX(), r.getY() + r.getHeight() * 0.5f, false);
+            g.setGradientFill (ref);
+            g.fillRect (r);
+        }
+        g.setColour (pal.screenEdge);
+        g.drawRoundedRectangle (r.reduced (0.5f), radius, 1.5f);
+        g.setColour (pal.plateHighlight);
+        g.fillRect (r.getX() + radius, r.getBottom() + 0.5f, r.getWidth() - radius * 2.0f, 1.0f);
     }
 
-    void stars (Graphics& g, Rectangle<float> r, int count, int seed, Colour tint, float alphaScale)
+    void caption (Graphics& g, Rectangle<float> area, const String& text, Colour colour, const Fonts& fonts)
+    {
+        g.setColour (colour);
+        g.setFont (fonts.ui (13.5f, 1));
+        g.drawText (text, area, Justification::centredLeft, false);
+    }
+
+    void stars (Graphics& g, Rectangle<float> r, int count, int seed, Colour tint)
     {
         Random rng (seed);
         for (int i = 0; i < count; ++i)
         {
             const float x = r.getX() + rng.nextFloat() * r.getWidth();
             const float y = r.getY() + rng.nextFloat() * r.getHeight();
-            const float s = 0.5f + rng.nextFloat() * rng.nextFloat() * 1.8f;
-            const float a = (0.15f + 0.65f * rng.nextFloat()) * alphaScale;
-            const auto col = (rng.nextInt (5) == 0 ? tint : Colours::white).withAlpha (a);
-            g.setColour (col);
-            if (rng.nextInt (16) == 0)
-                g.fillPath (star ({ x, y }, s * 2.6f, 0.22f));
-            else
-                g.fillEllipse (x - s * 0.5f, y - s * 0.5f, s, s);
+            const float s = 0.7f + rng.nextFloat() * rng.nextFloat() * 1.3f;
+            g.setColour (tint.withMultipliedAlpha (0.25f + 0.75f * rng.nextFloat()));
+            g.fillEllipse (x - s * 0.5f, y - s * 0.5f, s, s);
         }
+    }
+
+    void led (Graphics& g, Point<float> c, float r, Colour col, bool on)
+    {
+        if (on)
+        {
+            ColourGradient glow (col.withAlpha (0.45f), c.x, c.y, col.withAlpha (0.0f), c.x + r * 3.2f, c.y, true);
+            g.setGradientFill (glow);
+            g.fillEllipse (c.x - r * 3.2f, c.y - r * 3.2f, r * 6.4f, r * 6.4f);
+            g.setColour (col);
+        }
+        else
+        {
+            g.setColour (Colours::black.withAlpha (0.35f));
+        }
+        g.fillEllipse (c.x - r, c.y - r, r * 2.0f, r * 2.0f);
+        g.setColour (Colours::white.withAlpha (on ? 0.55f : 0.12f));
+        g.fillEllipse (c.x - r * 0.45f, c.y - r * 0.6f, r * 0.7f, r * 0.5f);
     }
 }
 
@@ -105,13 +137,17 @@ void StaffView::paint (Graphics& g)
     auto& v = ctx.vis;
     const auto& pal = v.pal;
     auto b = getLocalBounds().toFloat();
-    draw::glassPanel (g, b, pal);
-    draw::title (g, b.reduced (16.0f, 12.0f).removeFromTop (18.0f), "Pentagrama", pal, ctx.fonts, pal.dim);
+    draw::plate (g, b, pal);
+    draw::caption (g, b.reduced (16.0f, 10.0f).removeFromTop (20.0f), "Pentagrama", pal.dim, ctx.fonts);
+    auto paper = b.reduced (12.0f).withTrimmedTop (28.0f).withTrimmedBottom (26.0f);
+    draw::well (g, paper, pal);
 
-    auto area = b.reduced (16.0f, 0.0f).withTrimmedTop (44.0f).withTrimmedBottom (40.0f);
-    const float sp = jmin (area.getHeight() / 17.5f, area.getWidth() / 12.5f);
+    auto area = paper.reduced (8.0f, 0.0f).withTrimmedTop (10.0f).withTrimmedBottom (10.0f);
+    const float sp = jmin (area.getHeight() / 20.0f, area.getWidth() / 12.5f);
     const float midY = area.getCentreY();
-    auto yOf = [&] (int d) { return midY - (float) (d - 28) * sp * 0.5f; };
+    const float gap = sp * 1.4f; // separación extra entre clave de sol y clave de fa
+    auto yT = [&] (int d) { return midY - gap - (float) (d - 28) * sp * 0.5f; };
+    auto yB = [&] (int d) { return midY + gap - (float) (d - 28) * sp * 0.5f; };
 
     const float lineW = jmax (1.0f, sp * 0.09f);
     const float left = area.getX() + sp * 1.4f;
@@ -119,25 +155,27 @@ void StaffView::paint (Graphics& g)
     const auto inkCol = pal.ink;
 
     g.setColour (inkCol.withAlpha (0.55f));
-    for (int d : { 30, 32, 34, 36, 38, 18, 20, 22, 24, 26 })
-        g.fillRect (left, yOf (d) - lineW * 0.5f, right - left, lineW);
-    g.fillRect (left - lineW * 0.5f, yOf (38), lineW * 1.4f, yOf (18) - yOf (38));
-    g.fillRect (right - lineW, yOf (38), lineW, yOf (18) - yOf (38));
+    for (int d : { 30, 32, 34, 36, 38 })
+        g.fillRect (left, yT (d) - lineW * 0.5f, right - left, lineW);
+    for (int d : { 18, 20, 22, 24, 26 })
+        g.fillRect (left, yB (d) - lineW * 0.5f, right - left, lineW);
+    g.fillRect (left - lineW * 0.5f, yT (38), lineW * 1.4f, yB (18) - yT (38));
+    g.fillRect (right - lineW, yT (38), lineW, yB (18) - yT (38));
 
     const auto mf = ctx.fonts.music (sp * 4.0f);
 
     // Llave del sistema
     {
-        const float sysH = yOf (18) - yOf (38);
+        const float sysH = yB (18) - yT (38);
         const auto braceFont = ctx.fonts.music (sysH);
         const float bw = glyphWidth (braceFont, 0xE000);
         g.setColour (inkCol.withAlpha (0.85f));
-        drawGlyphF (g, braceFont, 0xE000, left - bw - sp * 0.25f, yOf (18));
+        drawGlyphF (g, braceFont, 0xE000, left - bw - sp * 0.25f, yB (18));
     }
 
     g.setColour (inkCol);
-    drawGlyphF (g, mf, 0xE050, left + sp * 0.5f, yOf (32)); // clave de sol
-    drawGlyphF (g, mf, 0xE062, left + sp * 0.5f, yOf (24)); // clave de fa
+    drawGlyphF (g, mf, 0xE050, left + sp * 0.5f, yT (32)); // clave de sol
+    drawGlyphF (g, mf, 0xE062, left + sp * 0.5f, yB (24)); // clave de fa
 
     // Armadura
     static const int trebleSharp[7] = { 38, 35, 39, 36, 33, 37, 34 };
@@ -150,8 +188,8 @@ void StaffView::paint (Graphics& g)
     const float accStep = v.sig.flats ? sp * 1.0f : sp * 1.1f;
     for (int i = 0; i < v.sig.count; ++i)
     {
-        drawGlyphF (g, mf, accGlyph, x, yOf (v.sig.flats ? trebleFlat[i] : trebleSharp[i]));
-        drawGlyphF (g, mf, accGlyph, x, yOf (v.sig.flats ? bassFlat[i] : bassSharp[i]));
+        drawGlyphF (g, mf, accGlyph, x, yT (v.sig.flats ? trebleFlat[i] : trebleSharp[i]));
+        drawGlyphF (g, mf, accGlyph, x, yB (v.sig.flats ? bassFlat[i] : bassSharp[i]));
         x += accStep;
     }
     const float sigEnd = x;
@@ -218,13 +256,14 @@ void StaffView::paint (Graphics& g)
     for (auto& n : ns)
     {
         const float nx = noteX + n.xOff;
-        const float ny = yOf (n.d);
+        auto ys = [&] (int d) { return n.treble ? yT (d) : yB (d); };
+        const float ny = ys (n.d);
 
         // Líneas adicionales
         g.setColour (inkCol.withAlpha (0.7f));
         auto ledger = [&] (int d)
         {
-            g.fillRect (noteX - sp * 0.45f, yOf (d) - lineW * 0.5f, headW + sp * 0.9f + (n.shifted ? headW : 0.0f), lineW);
+            g.fillRect (noteX - sp * 0.45f, ys (d) - lineW * 0.5f, headW + sp * 0.9f + (n.shifted ? headW : 0.0f), lineW);
         };
         if (n.treble)
         {
@@ -238,16 +277,8 @@ void StaffView::paint (Graphics& g)
         }
 
         auto col = pal.noteColour (n.midi);
-        if (! pal.dark) col = col.withMultipliedBrightness (0.78f).withMultipliedSaturation (1.15f);
+        if (! pal.dark) col = col.withMultipliedBrightness (0.72f).withMultipliedSaturation (1.25f);
         const float alpha = n.sustainedOnly ? 0.45f : 1.0f;
-
-        // brillo
-        {
-            const auto c = Point<float> (nx + headW * 0.5f, ny);
-            ColourGradient glow (col.withAlpha (0.45f * alpha), c.x, c.y, col.withAlpha (0.0f), c.x + sp * 1.8f, c.y, true);
-            g.setGradientFill (glow);
-            g.fillEllipse (c.x - sp * 1.8f, c.y - sp * 1.8f, sp * 3.6f, sp * 3.6f);
-        }
 
         g.setColour (col.withAlpha (alpha));
         drawGlyphF (g, mf, 0xE0A2, nx, ny);
@@ -285,7 +316,7 @@ void StaffView::paint (Graphics& g)
     }
     g.setColour (pal.dim);
     g.setFont (ctx.fonts.ui (13.0f));
-    g.drawText (sigText, b.reduced (18.0f, 12.0f).removeFromBottom (20.0f), Justification::centredLeft, true);
+    g.drawText (sigText, b.reduced (16.0f, 6.0f).removeFromBottom (20.0f), Justification::centredLeft, true);
 }
 
 //==============================================================================
@@ -293,14 +324,19 @@ void StaffView::paint (Graphics& g)
 //==============================================================================
 Rectangle<float> ChordScreen::chipArea() const
 {
-    auto b = getLocalBounds().toFloat().reduced (16.0f);
-    const float h = jlimit (54.0f, 74.0f, b.getHeight() * 0.2f);
+    auto b = screenArea().reduced (12.0f);
+    const float h = jlimit (48.0f, 66.0f, b.getHeight() * 0.19f);
     return b.removeFromBottom (h);
+}
+
+Rectangle<float> ChordScreen::screenArea() const
+{
+    return getLocalBounds().toFloat().reduced (12.0f).withTrimmedTop (28.0f);
 }
 
 Rectangle<float> ChordScreen::chipBounds (int i, int count) const
 {
-    auto a = chipArea().reduced (8.0f, 8.0f);
+    auto a = chipArea();
     const float gap = 6.0f;
     const float w = (a.getWidth() - gap * (float) (count - 1)) / (float) jmax (1, count);
     return { a.getX() + (float) i * (w + gap), a.getY(), w, a.getHeight() };
@@ -311,46 +347,36 @@ void ChordScreen::paint (Graphics& g)
     auto& v = ctx.vis;
     const auto& pal = v.pal;
     auto& fonts = ctx.fonts;
-    auto b = getLocalBounds().toFloat();
-    const float radius = 18.0f;
-
-    ColourGradient bg (pal.screenTop, b.getX(), b.getY(), pal.screenBottom, b.getX(), b.getBottom(), false);
-    g.setGradientFill (bg);
-    g.fillRoundedRectangle (b, radius);
-
-    {
-        Graphics::ScopedSaveState ss (g);
-        Path clip;
-        clip.addRoundedRectangle (b, radius);
-        g.reduceClipRegion (clip);
-        draw::stars (g, b, 90, 7, pal.b, 0.75f);
-
-        // Resplandor detrás del acorde (más intenso si hay notas)
-        const float glowA = v.active.empty() ? 0.12f : 0.26f;
-        const auto c = b.getCentre().translated (0.0f, -b.getHeight() * 0.08f);
-        ColourGradient glow (pal.a.withAlpha (glowA), c.x, c.y, pal.b.withAlpha (0.0f), c.x + b.getWidth() * 0.42f, c.y, true);
-        g.setGradientFill (glow);
-        g.fillEllipse (c.x - b.getWidth() * 0.42f, c.y - b.getHeight() * 0.34f, b.getWidth() * 0.84f, b.getHeight() * 0.68f);
-    }
-
-    g.setColour (pal.screenEdge);
-    g.drawRoundedRectangle (b.reduced (0.6f), radius, 1.2f);
-
-    auto inner = b.reduced (18.0f, 12.0f);
-    auto head = inner.removeFromTop (18.0f);
-    draw::title (g, head, "Acorde", pal, fonts, pal.screenDim);
+    auto outer = getLocalBounds().toFloat();
+    draw::plate (g, outer, pal);
+    draw::caption (g, outer.reduced (16.0f, 10.0f).removeFromTop (20.0f), "Acorde", pal.dim, fonts);
 
     {
         auto keyText = theory::keyTitle (v.keyRoot, v.scale, v.latin);
-        if (v.autoKey) keyText = (v.autoHasData ? U8 ("Auto · ") : U8 ("Auto · esperando notas · ")) + keyText;
-        g.setFont (fonts.ui (13.0f, 1));
-        g.setColour (pal.screenDim);
-        g.drawText (keyText, head, Justification::centredRight, true);
+        if (v.autoKey) keyText = (v.autoHasData ? U8 ("Auto: ") : U8 ("Auto (esperando notas): ")) + keyText;
+        g.setFont (fonts.ui (13.0f));
+        g.setColour (pal.dim);
+        g.drawText (keyText, outer.reduced (16.0f, 10.0f).removeFromTop (20.0f), Justification::centredRight, true);
+    }
+
+    auto b = screenArea();
+    draw::screen (g, b, pal);
+    {
+        Graphics::ScopedSaveState ss (g);
+        g.reduceClipRegion (b.reduced (2.0f).toNearestInt());
+        draw::stars (g, b, 46, 7, pal.screenFaint);
+        if (! v.active.empty())
+        {
+            const auto c = b.getCentre().translated (0.0f, -b.getHeight() * 0.12f);
+            ColourGradient glow (pal.accent.withAlpha (0.10f), c.x, c.y, pal.accent.withAlpha (0.0f), c.x + b.getWidth() * 0.4f, c.y, true);
+            g.setGradientFill (glow);
+            g.fillRect (b);
+        }
     }
 
     // Área de contenido
-    auto content = b.reduced (22.0f, 0.0f).withTrimmedTop (40.0f);
-    content.setBottom (chipArea().getY() - 6.0f);
+    auto content = b.reduced (20.0f, 0.0f).withTrimmedTop (14.0f);
+    content.setBottom (chipArea().getY() - 24.0f);
 
     const int count = (int) v.active.size();
     String big, sub, chip;
@@ -360,8 +386,8 @@ void ChordScreen::paint (Graphics& g)
     {
         big = theory::keyTitle (v.keyRoot, v.scale, v.latin);
         StringArray sn;
-        for (auto s : theory::scales()[(size_t) v.scale].steps)
-            sn.add (theory::pcName (v.keyRoot + s, v.sig, v.latin));
+        for (auto s2 : theory::scales()[(size_t) v.scale].steps)
+            sn.add (theory::pcName (v.keyRoot + s2, v.sig, v.latin));
         sub = "Escala: " + sn.joinIntoString ("  ");
         chip = U8 ("Toca una nota o un acorde");
         bigWeight = 1;
@@ -371,7 +397,7 @@ void ChordScreen::paint (Graphics& g)
         const int m = v.active.front();
         big = theory::noteName (m, v.sig, v.latin, true);
         const double hz = 440.0 * std::pow (2.0, (m - 69) / 12.0);
-        sub = theory::noteName (m, v.sig, true, false) + (m == 60 ? U8 (" central") : String()) + U8 ("  ·  ") + String (hz, 1) + " Hz";
+        sub = theory::noteName (m, v.sig, true, false) + (m == 60 ? U8 (" central") : String()) + U8 (", ") + String (hz, 1) + " Hz";
         chip = theory::noteDegree (theory::pcOf (m), v.keyRoot, v.scale);
     }
     else if (v.chord.valid && (count >= 3 || v.chord.suffix == "5"))
@@ -379,16 +405,18 @@ void ChordScreen::paint (Graphics& g)
         big = v.chord.symbol;
         sub = theory::pcName (v.chord.root, v.sig, true) + " " + v.chord.quality;
         if (v.chord.inversion != "estado fundamental")
-            sub << U8 ("  ·  ") << v.chord.inversion;
-        chip = v.degree.roman + U8 ("  ·  ") + v.degree.function;
+            sub << ", " << v.chord.inversion;
+        chip = v.degree.roman + U8 ("   ") + v.degree.function.replace (U8 (" · "), U8 (": "));
     }
     else if (count == 2)
     {
         const int iv = v.active[1] - v.active[0];
         big = theory::intervalName (iv);
-        sub = theory::noteName (v.active[0], v.sig, v.latin) + U8 ("  →  ") + theory::noteName (v.active[1], v.sig, v.latin)
-              + U8 ("  ·  ") + String (iv) + (iv == 1 ? " semitono" : " semitonos");
-        chip = U8 ("Intervalo");
+        sub = theory::noteName (v.active[0], v.sig, v.latin) + U8 (" a ") + theory::noteName (v.active[1], v.sig, v.latin)
+              + ", " + String (iv) + (iv == 1 ? " semitono" : " semitonos");
+        const int ivc = iv % 12;
+        const bool consonant = ivc == 0 || ivc == 3 || ivc == 4 || ivc == 5 || ivc == 7 || ivc == 8 || ivc == 9;
+        chip = consonant ? U8 ("Consonante: suena estable") : U8 ("Disonante: suena con tensión");
     }
     else
     {
@@ -396,27 +424,20 @@ void ChordScreen::paint (Graphics& g)
         for (int pc = 0; pc < 12; ++pc)
             if (v.activeMask & (1u << (unsigned) pc)) sn.add (theory::pcName (pc, v.sig, v.latin));
         big = sn.joinIntoString (" ");
-        sub = String (count) + U8 (" notas · sin nombre común de acorde");
-        chip = U8 ("Prueba quitar una nota");
+        sub = String (count) + U8 (" notas sin nombre de acorde común");
+        chip = U8 ("Prueba quitando una nota");
         bigWeight = 1;
     }
 
-    // Texto grande con degradado
     const float bigMaxH = jlimit (28.0f, 120.0f, content.getHeight() * 0.34f);
     const auto bigFont = fitFont (fonts, big, bigMaxH, content.getWidth() * 0.94f, bigWeight);
     const float bigH = bigFont.getHeight();
-
     const float blockH = bigH + 30.0f + 34.0f + 40.0f;
     float y = content.getY() + jmax (0.0f, (content.getHeight() - blockH) * 0.45f);
 
-    auto bigRect = Rectangle<float> (content.getX(), y, content.getWidth(), bigH);
-    {
-        ColourGradient tg (Colours::white, bigRect.getX(), bigRect.getY(),
-                           pal.a.interpolatedWith (Colours::white, 0.45f), bigRect.getX(), bigRect.getBottom(), false);
-        g.setGradientFill (tg);
-        g.setFont (bigFont);
-        g.drawText (big, bigRect, Justification::centred, false);
-    }
+    g.setColour (count > 0 ? pal.screenText : pal.screenText.withAlpha (0.8f));
+    g.setFont (bigFont);
+    g.drawText (big, Rectangle<float> (content.getX(), y, content.getWidth(), bigH), Justification::centred, false);
     y += bigH + 4.0f;
 
     g.setColour (pal.screenDim);
@@ -427,52 +448,49 @@ void ChordScreen::paint (Graphics& g)
     if (chip.isNotEmpty())
     {
         const auto cf = fonts.ui (13.5f, 1);
-        const float cw = textWidth (cf, chip) + 28.0f;
+        const float cw = textWidth (cf, chip) + 24.0f;
         auto cr = Rectangle<float> (content.getCentreX() - cw * 0.5f, y, cw, 26.0f);
-        g.setColour (pal.a.withAlpha (count > 0 ? 0.20f : 0.08f));
-        g.fillRoundedRectangle (cr, 13.0f);
-        g.setColour (pal.a.withAlpha (count > 0 ? 0.65f : 0.30f));
-        g.drawRoundedRectangle (cr.reduced (0.5f), 13.0f, 1.0f);
-        g.setColour (pal.screenText.withAlpha (count > 0 ? 1.0f : 0.7f));
+        g.setColour (count > 0 ? pal.screenDim : pal.screenFaint);
+        g.drawRoundedRectangle (cr.reduced (0.5f), 4.0f, 1.0f);
+        g.setColour (count > 0 ? pal.screenText : pal.screenDim);
         g.setFont (cf);
         g.drawText (chip, cr, Justification::centred, false);
         y += 36.0f;
     }
 
-    // Pastillas con las notas tocadas
+    // Etiquetas con las notas tocadas
     if (count > 0)
     {
         const auto pf = fonts.ui (13.0f, 1);
-        std::vector<std::pair<String, Colour>> pills;
+        std::vector<std::pair<String, Colour>> tags;
         for (auto m : v.active)
-            pills.push_back ({ theory::noteName (m, v.sig, v.latin), v.pal.noteColour (m) });
-        if (pills.size() > 10) pills.resize (10);
+            tags.push_back ({ theory::noteName (m, v.sig, v.latin), pal.noteColour (m) });
+        if (tags.size() > 10) tags.resize (10);
 
         float total = 0.0f;
-        for (auto& p : pills) total += textWidth (pf, p.first) + 30.0f;
-        total += 6.0f * (float) (pills.size() - 1);
+        for (auto& t : tags) total += textWidth (pf, t.first) + 26.0f;
+        total += 6.0f * (float) (tags.size() - 1);
         float px = content.getCentreX() - total * 0.5f;
-        for (auto& p : pills)
+        for (auto& t : tags)
         {
-            const float w = textWidth (pf, p.first) + 30.0f;
-            auto r = Rectangle<float> (px, y, w, 24.0f);
-            g.setColour (Colours::white.withAlpha (0.07f));
-            g.fillRoundedRectangle (r, 12.0f);
-            g.setColour (p.second);
-            g.fillEllipse (r.getX() + 9.0f, r.getCentreY() - 4.0f, 8.0f, 8.0f);
+            const float w = textWidth (pf, t.first) + 26.0f;
+            auto r = Rectangle<float> (px, y, w, 22.0f);
+            g.setColour (pal.screenFaint.withMultipliedAlpha (0.6f));
+            g.fillRoundedRectangle (r, 3.0f);
+            g.setColour (t.second);
+            g.fillRect (r.getX() + 7.0f, r.getCentreY() - 3.5f, 7.0f, 7.0f);
             g.setColour (pal.screenText);
             g.setFont (pf);
-            g.drawText (p.first, r.withTrimmedLeft (20.0f).withTrimmedRight (6.0f), Justification::centred, false);
+            g.drawText (t.first, r.withTrimmedLeft (17.0f).withTrimmedRight (4.0f), Justification::centred, false);
             px += w + 6.0f;
         }
     }
 
-    // Acordes de la tonalidad
+    // Acordes de la tonalidad: una fila de botones
     auto ca = chipArea();
-    g.setColour (Colours::white.withAlpha (0.05f));
-    g.fillRoundedRectangle (ca, 12.0f);
-    g.setColour (Colours::white.withAlpha (0.10f));
-    g.drawRoundedRectangle (ca.reduced (0.5f), 12.0f, 1.0f);
+    g.setColour (pal.screenDim);
+    g.setFont (fonts.ui (12.0f));
+    g.drawText (U8 ("Acordes de la tonalidad"), ca.withHeight (16.0f).translated (2.0f, -18.0f), Justification::centredLeft, false);
 
     const int nChips = (int) v.diatonic.size();
     for (int i = 0; i < nChips; ++i)
@@ -483,18 +501,19 @@ void ChordScreen::paint (Graphics& g)
 
         if (activeChip)
         {
-            ColourGradient cg (pal.a.withAlpha (0.55f), r.getX(), r.getY(), pal.b.withAlpha (0.55f), r.getRight(), r.getBottom(), false);
-            g.setGradientFill (cg);
-            g.fillRoundedRectangle (r, 9.0f);
+            g.setColour (pal.accent.withAlpha (0.22f));
+            g.fillRoundedRectangle (r, 5.0f);
+            g.setColour (pal.accent);
+            g.drawRoundedRectangle (r.reduced (0.5f), 5.0f, 1.2f);
         }
-        else if (i == hoverChip)
+        else
         {
-            g.setColour (Colours::white.withAlpha (0.10f));
-            g.fillRoundedRectangle (r, 9.0f);
+            g.setColour (pal.screenFaint.withMultipliedAlpha (i == hoverChip ? 1.2f : 0.55f));
+            g.fillRoundedRectangle (r, 5.0f);
         }
 
         g.setColour (activeChip ? pal.screenText : pal.screenDim);
-        g.setFont (fonts.ui (jmin (13.0f, r.getHeight() * 0.28f), 1));
+        g.setFont (fonts.ui (jmin (12.5f, r.getHeight() * 0.28f), 1));
         g.drawText (d.roman, r.withHeight (r.getHeight() * 0.45f).withTrimmedTop (3.0f), Justification::centred, false);
         g.setColour (pal.screenText);
         g.setFont (fitFont (fonts, d.symbol, jmin (17.0f, r.getHeight() * 0.36f), r.getWidth() - 6.0f, 1));
@@ -564,13 +583,19 @@ void CircleView::paint (Graphics& g)
     const auto& pal = v.pal;
     auto& fonts = ctx.fonts;
     auto b = getLocalBounds().toFloat();
-    draw::glassPanel (g, b, pal);
-    draw::title (g, b.reduced (16.0f, 12.0f).removeFromTop (18.0f), U8 ("Círculo de quintas"), pal, fonts, pal.dim);
+    draw::plate (g, b, pal);
+    draw::caption (g, b.reduced (16.0f, 10.0f).removeFromTop (20.0f), U8 ("Círculo de quintas"), pal.dim, fonts);
 
     Point<float> c; float r;
     geometry (c, r);
     const float rOut = r, rMid = r * 0.68f, rIn = r * 0.40f;
     const float seg = MathConstants<float>::twoPi / 12.0f;
+
+    // Base del disco
+    g.setColour (pal.well);
+    g.fillEllipse (c.x - rOut, c.y - rOut, rOut * 2.0f, rOut * 2.0f);
+    g.setColour (pal.wellEdge);
+    g.drawEllipse (c.x - rOut, c.y - rOut, rOut * 2.0f, rOut * 2.0f, 1.0f);
 
     const auto& sc = theory::scales()[(size_t) v.scale];
     const int parentMajor = theory::pcOf (v.keyRoot - sc.parentOffset);
@@ -597,19 +622,12 @@ void CircleView::paint (Graphics& g)
 
             if (isTonic)
             {
-                ColourGradient tg (pal.a, c.x, c.y - rOut, pal.b, c.x, c.y + rOut, false);
-                g.setGradientFill (tg);
+                g.setColour (pal.accent);
                 g.fillPath (p);
             }
             else if (dist <= 1)
             {
-                g.setColour (pal.a.withAlpha (minorRing ? 0.10f : 0.16f));
-                g.fillPath (p);
-            }
-            else
-            {
-                g.setColour (pal.dark ? Colours::white.withAlpha (minorRing ? 0.015f : 0.03f)
-                                      : Colour (0xff0b1a3a).withAlpha (minorRing ? 0.02f : 0.035f));
+                g.setColour (pal.accent.withAlpha (minorRing ? 0.10f : 0.16f));
                 g.fillPath (p);
             }
 
@@ -622,57 +640,50 @@ void CircleView::paint (Graphics& g)
             g.setColour (pal.faint);
             g.strokePath (p, PathStrokeType (1.0f));
 
-            // etiquetas
             const float ang = (float) i * seg - MathConstants<float>::halfPi;
             const float lr = minorRing ? (rIn + rMid) * 0.5f : (rMid + rOut) * 0.5f;
             const auto lp = c + Point<float> (std::cos (ang) * lr, std::sin (ang) * lr);
             const int pc = minorRing ? theory::pcOf (majorPcAt (i) + 9) : majorPcAt (i);
-            // Nombre preferido según la armadura de esa tonalidad
             const auto sigHere = theory::keySignature (pc, minorRing ? 1 : 0);
             auto name = theory::pcName (pc, sigHere, v.latin) + (minorRing ? "m" : "");
             const float fh = minorRing ? jmax (10.0f, r * 0.085f) : jmax (12.0f, r * 0.11f);
             g.setFont (fonts.ui (fh, isTonic ? 2 : 1));
-            g.setColour (isTonic ? Colours::white : (minorRing ? pal.dim : pal.text));
+            g.setColour (isTonic ? pal.onAccent : (minorRing ? pal.dim : pal.text));
             g.drawText (name, Rectangle<float> (lp.x - 40.0f, lp.y - fh * 0.6f, 80.0f, fh * 1.2f), Justification::centred, false);
         }
     }
 
-    // Constelación: las notas que suenan, unidas como estrellas
+    // Constelación: las notas que suenan, unidas con líneas
     std::vector<int> idx;
     for (int pc = 0; pc < 12; ++pc)
         if (v.activeMask & (1u << (unsigned) pc)) idx.push_back (circleIndexOfPc (pc));
     std::sort (idx.begin(), idx.end());
 
-    if (! idx.empty())
+    std::vector<Point<float>> pts;
     {
-        const float sr = (rMid + rOut) * 0.5f + (rOut - rMid) * 0.32f;
-        std::vector<Point<float>> pts;
+        const float sr = rMid + (rOut - rMid) * 0.82f;
         for (auto i : idx)
         {
             const float ang = (float) i * seg - MathConstants<float>::halfPi;
             pts.push_back (c + Point<float> (std::cos (ang) * sr, std::sin (ang) * sr));
         }
+    }
 
-        if (pts.size() >= 2)
-        {
-            Path poly;
-            poly.startNewSubPath (pts[0]);
-            for (size_t k = 1; k < pts.size(); ++k) poly.lineTo (pts[k]);
-            if (pts.size() >= 3) poly.closeSubPath();
-            g.setColour (pal.a.withAlpha (pal.dark ? 0.16f : 0.12f));
-            if (pts.size() >= 3) g.fillPath (poly);
-            ColourGradient lg (pal.a.withAlpha (0.9f), c.x - r, c.y, pal.b.withAlpha (0.9f), c.x + r, c.y, false);
-            g.setGradientFill (lg);
-            g.strokePath (poly, PathStrokeType (1.8f, PathStrokeType::curved, PathStrokeType::rounded));
-        }
-
+    if (pts.size() >= 2)
+    {
+        Path poly;
+        poly.startNewSubPath (pts[0]);
+        for (size_t k = 1; k < pts.size(); ++k) poly.lineTo (pts[k]);
+        if (pts.size() >= 3) poly.closeSubPath();
+        g.setColour (pal.text.withAlpha (pal.dark ? 0.75f : 0.65f));
+        g.strokePath (poly, PathStrokeType (1.4f));
     }
 
     // Centro: tonalidad y armadura
     {
-        g.setColour (pal.dark ? Colour (0xff070917).withAlpha (0.55f) : Colours::white.withAlpha (0.7f));
+        g.setColour (pal.plate);
         g.fillEllipse (c.x - rIn, c.y - rIn, rIn * 2.0f, rIn * 2.0f);
-        g.setColour (pal.faint);
+        g.setColour (pal.wellEdge);
         g.drawEllipse (c.x - rIn, c.y - rIn, rIn * 2.0f, rIn * 2.0f, 1.0f);
 
         const auto root = theory::pcName (v.keyRoot, v.sig, v.latin);
@@ -683,36 +694,19 @@ void CircleView::paint (Graphics& g)
         g.setColour (pal.dim);
         g.setFont (fitFont (fonts, scName, rIn * 0.22f, rIn * 1.7f, 0));
         g.drawText (scName, Rectangle<float> (c.x - rIn, c.y - rIn * 0.02f, rIn * 2.0f, rIn * 0.3f), Justification::centred, false);
-        const String sigTxt = v.sig.count == 0 ? U8 ("sin alteraciones") : String (v.sig.count) + (v.sig.flats ? "b" : "#");
-        g.setFont (fonts.ui (rIn * 0.2f, 1));
-        g.setColour (pal.a);
+        const String sigTxt = v.sig.count == 0 ? U8 ("sin alteraciones")
+                                               : String (v.sig.count) + (v.sig.flats ? (v.sig.count == 1 ? " bemol" : " bemoles")
+                                                                                     : (v.sig.count == 1 ? " sostenido" : " sostenidos"));
+        g.setFont (fitFont (fonts, sigTxt, rIn * 0.19f, rIn * 1.6f, 1));
         g.drawText (sigTxt, Rectangle<float> (c.x - rIn, c.y + rIn * 0.3f, rIn * 2.0f, rIn * 0.3f), Justification::centred, false);
     }
 
-    if (! idx.empty())
-    {
-        const float sr = (rMid + rOut) * 0.5f + (rOut - rMid) * 0.32f;
-        std::vector<Point<float>> pts;
-        for (auto i : idx)
-        {
-            const float ang = (float) i * seg - MathConstants<float>::halfPi;
-            pts.push_back (c + Point<float> (std::cos (ang) * sr, std::sin (ang) * sr));
-        }
-        for (size_t k = 0; k < pts.size(); ++k)
-        {
-            const int pc = majorPcAt (idx[k]);
-            const auto col = pal.noteColour (60 + pc);
-            ColourGradient glow (col.withAlpha (0.55f), pts[k].x, pts[k].y, col.withAlpha (0.0f), pts[k].x + 16.0f, pts[k].y, true);
-            g.setGradientFill (glow);
-            g.fillEllipse (pts[k].x - 16.0f, pts[k].y - 16.0f, 32.0f, 32.0f);
-            g.setColour (Colours::white);
-            g.fillPath (draw::star (pts[k], 7.0f, 0.3f));
-        }
-    }
+    for (size_t k = 0; k < pts.size(); ++k)
+        draw::led (g, pts[k], 4.5f, pal.noteColour (60 + majorPcAt (idx[k])), true);
 
     // Pie
-    auto foot = b.reduced (18.0f, 12.0f).removeFromBottom (18.0f);
-    g.setFont (fonts.ui (13.0f));
+    auto foot = b.reduced (16.0f, 8.0f).removeFromBottom (18.0f);
+    g.setFont (fonts.ui (12.5f));
     g.setColour (pal.dim);
     const int n = theory::countBits (v.activeMask);
     g.drawText (n == 1 ? String ("1 nota") : String (n) + " notas", foot, Justification::centredRight, false);
@@ -762,8 +756,8 @@ static int whiteIndex (int note)
 
 Rectangle<float> KeyboardView::keysArea() const
 {
-    auto b = getLocalBounds().toFloat().reduced (12.0f, 0.0f);
-    const float beam = b.getHeight() * 0.26f;
+    auto b = getLocalBounds().toFloat().reduced (14.0f, 0.0f);
+    const float beam = jlimit (18.0f, 60.0f, b.getHeight() * 0.18f);
     return b.withTrimmedTop (beam).withTrimmedBottom (24.0f);
 }
 
@@ -809,19 +803,19 @@ void KeyboardView::paint (Graphics& g)
     auto& v = ctx.vis;
     const auto& pal = v.pal;
     auto b = getLocalBounds().toFloat();
-    draw::glassPanel (g, b, pal);
+    draw::plate (g, b, pal);
 
     const auto a = keysArea();
-    const float beamTop = b.getY() + 10.0f;
+    const float beamTop = b.getY() + 8.0f;
 
     auto levelOf = [&] (int n)
     {
         const float d = v.down[(size_t) n] / 127.0f;
-        const float s = v.sus[(size_t) n] / 127.0f * 0.55f;
-        return jmax (d > 0 ? 0.55f + 0.45f * d : 0.0f, s > 0 ? 0.25f + 0.3f * s : 0.0f);
+        const float s = v.sus[(size_t) n] / 127.0f;
+        return jmax (d > 0 ? 0.6f + 0.4f * d : 0.0f, s > 0 ? 0.3f + 0.2f * s : 0.0f);
     };
 
-    // Rayos de luz sobre las teclas encendidas
+    // Luz que sale de las teclas encendidas
     for (int n = lowNote; n <= highNote; ++n)
     {
         const float lvl = levelOf (n);
@@ -829,23 +823,17 @@ void KeyboardView::paint (Graphics& g)
         if (lvl <= 0.0f && fl <= 0.01f) continue;
         const auto k = keyRect (n);
         const auto col = pal.noteColour (n);
-        const float inten = jlimit (0.0f, 1.0f, lvl * 0.7f + fl * 0.6f);
-        const float w = k.r.getWidth() * (k.black ? 1.3f : 0.9f);
-        auto beam = Rectangle<float> (k.r.getCentreX() - w * 0.5f, beamTop, w, a.getY() - beamTop);
-        ColourGradient bg (col.withAlpha (0.0f), beam.getX(), beam.getY(), col.withAlpha (0.75f * inten), beam.getX(), beam.getBottom(), false);
+        const float inten = jlimit (0.0f, 1.0f, lvl * 0.55f + fl * 0.5f);
+        const float w = k.r.getWidth() * (k.black ? 1.0f : 0.7f);
+        auto beam = Rectangle<float> (k.r.getCentreX() - w * 0.5f, beamTop, w, a.getY() - beamTop - 4.0f);
+        ColourGradient bg (col.withAlpha (0.0f), beam.getX(), beam.getY(), col.withAlpha (0.55f * inten), beam.getX(), beam.getBottom(), false);
         g.setGradientFill (bg);
         g.fillRect (beam);
-        // halo
-        const auto c = Point<float> (k.r.getCentreX(), a.getY());
-        const float hr = k.r.getWidth() * (1.6f + fl * 1.4f);
-        ColourGradient halo (col.withAlpha (0.5f * inten), c.x, c.y, col.withAlpha (0.0f), c.x + hr, c.y, true);
-        g.setGradientFill (halo);
-        g.fillEllipse (c.x - hr, c.y - hr, hr * 2.0f, hr * 2.0f);
     }
 
-    // Marco del teclado
-    g.setColour (pal.dark ? Colour (0xff04050c) : Colour (0xff1b2033));
-    g.fillRoundedRectangle (a.expanded (4.0f, 4.0f).withTrimmedTop (2.0f), 6.0f);
+    // Cama del teclado
+    g.setColour (pal.dark ? Colour (0xff050506) : Colour (0xff1d1f24));
+    g.fillRoundedRectangle (a.expanded (4.0f, 4.0f).withTrimmedTop (-2.0f), 4.0f);
 
     const bool showScale = v.highlight;
 
@@ -857,52 +845,43 @@ void KeyboardView::paint (Graphics& g)
         auto r = k.r.reduced (0.6f, 0.0f);
         ColourGradient wg (pal.keyWhite, r.getX(), r.getY(), pal.keyWhiteShade, r.getX(), r.getBottom(), false);
         g.setGradientFill (wg);
-        g.fillRoundedRectangle (r.withTrimmedTop (-4.0f), 3.0f);
+        g.fillRoundedRectangle (r.withTrimmedTop (-4.0f), 2.5f);
 
         const int pc = n % 12;
         const bool inScale = showScale && (v.scaleMask & (1u << (unsigned) pc)) != 0;
-        if (inScale)
-        {
-            g.setColour (pal.a.withAlpha (0.10f));
-            g.fillRect (r.withTrimmedTop (r.getHeight() * 0.62f));
-        }
-
         const float lvl = levelOf (n);
         if (lvl > 0.0f)
         {
             const auto col = pal.noteColour (n);
-            ColourGradient lg (col.interpolatedWith (Colours::white, 0.35f).withAlpha (lvl), r.getX(), r.getY(),
-                               col.withAlpha (lvl), r.getX(), r.getBottom(), false);
-            g.setGradientFill (lg);
-            g.fillRoundedRectangle (r.withTrimmedTop (-4.0f), 3.0f);
+            g.setColour (col.withAlpha (0.35f + 0.65f * lvl));
+            g.fillRoundedRectangle (r.withTrimmedTop (-4.0f), 2.5f);
+            g.setColour (Colours::white.withAlpha (0.35f));
+            g.fillRect (r.withHeight (2.0f));
         }
 
         if (inScale)
         {
             const bool isRoot = pc == theory::pcOf (v.keyRoot);
-            const float d = jmin (r.getWidth() * 0.42f, 9.0f);
-            const auto dc = Point<float> (r.getCentreX(), r.getBottom() - d * 1.9f - (pc == 0 ? 14.0f : 0.0f));
-            g.setColour ((lvl > 0 ? Colours::white : pal.a).withAlpha (isRoot ? 0.95f : 0.6f));
-            if (isRoot) g.drawEllipse (dc.x - d * 0.6f, dc.y - d * 0.6f, d * 1.2f, d * 1.2f, 1.6f);
-            g.fillEllipse (dc.x - d * 0.3f, dc.y - d * 0.3f, d * 0.6f, d * 0.6f);
+            const float d = jmin (r.getWidth() * 0.36f, 7.0f);
+            const auto dc = Point<float> (r.getCentreX(), r.getBottom() - d * 2.2f - (pc == 0 ? 14.0f : 0.0f));
+            const auto mark = lvl > 0 ? Colours::black.withAlpha (0.55f) : (pal.rainbow ? pal.noteColour (n).withMultipliedBrightness (0.75f) : pal.accent.withMultipliedBrightness (pal.dark ? 0.9f : 0.75f));
+            g.setColour (mark);
+            if (isRoot) g.fillRect (dc.x - d * 0.5f, dc.y - d * 0.5f, d, d);
+            else        g.fillEllipse (dc.x - d * 0.32f, dc.y - d * 0.32f, d * 0.64f, d * 0.64f);
         }
 
         if (pc == 0)
         {
-            g.setColour (lvl > 0 ? Colour (0xff10131f) : pal.keyEdge);
-            g.setFont (ctx.fonts.ui (jmin (12.0f, r.getWidth() * 0.55f), 1));
+            g.setColour (lvl > 0 ? Colours::black.withAlpha (0.7f) : pal.keyEdge);
+            g.setFont (ctx.fonts.ui (jmin (11.5f, r.getWidth() * 0.55f), 1));
             g.drawText ((v.latin ? String ("Do") : String ("C")) + String (n / 12 - 1),
-                        r.withTrimmedTop (r.getHeight() - 18.0f), Justification::centred, false);
+                        r.withTrimmedTop (r.getHeight() - 17.0f), Justification::centred, false);
         }
     }
 
     // Fieltro
-    {
-        auto felt = Rectangle<float> (a.getX(), a.getY() - 3.0f, a.getWidth(), 3.0f);
-        ColourGradient fg (pal.a.withAlpha (0.8f), felt.getX(), felt.getY(), pal.b.withAlpha (0.8f), felt.getRight(), felt.getY(), false);
-        g.setGradientFill (fg);
-        g.fillRect (felt);
-    }
+    g.setColour (pal.felt);
+    g.fillRect (Rectangle<float> (a.getX(), a.getY() - 3.0f, a.getWidth(), 3.0f));
 
     // Teclas negras
     for (int n = lowNote; n <= highNote; ++n)
@@ -910,48 +889,48 @@ void KeyboardView::paint (Graphics& g)
         const auto k = keyRect (n);
         if (! k.black) continue;
         auto r = k.r;
-        g.setColour (Colours::black.withAlpha (0.35f));
-        g.fillRoundedRectangle (r.translated (1.2f, 1.5f), 2.5f);
-        ColourGradient bg (pal.keyBlackTop, r.getX(), r.getY(), pal.keyBlack, r.getX(), r.getBottom(), false);
+        g.setColour (Colours::black.withAlpha (0.4f));
+        g.fillRoundedRectangle (r.translated (1.0f, 1.5f), 2.0f);
+        ColourGradient bg (pal.keyBlackTop, r.getX(), r.getY(), pal.keyBlack, r.getX(), r.getY() + r.getHeight() * 0.85f, false);
         g.setGradientFill (bg);
-        g.fillRoundedRectangle (r, 2.5f);
-        g.setColour (Colours::white.withAlpha (0.10f));
-        g.fillRect (r.reduced (r.getWidth() * 0.18f, 0.0f).withTrimmedTop (r.getHeight() - 6.0f).withHeight (2.0f));
+        g.fillRoundedRectangle (r, 2.0f);
+        g.setColour (Colours::white.withAlpha (0.08f));
+        g.fillRect (r.reduced (r.getWidth() * 0.2f, 0.0f).withTrimmedTop (r.getHeight() - 7.0f).withHeight (2.0f));
 
         const float lvl = levelOf (n);
         if (lvl > 0.0f)
         {
             const auto col = pal.noteColour (n);
-            ColourGradient lg (col.withAlpha (lvl), r.getX(), r.getY(), col.interpolatedWith (Colours::black, 0.25f).withAlpha (lvl), r.getX(), r.getBottom(), false);
-            g.setGradientFill (lg);
-            g.fillRoundedRectangle (r, 2.5f);
+            g.setColour (col.withMultipliedBrightness (0.85f).withAlpha (0.35f + 0.65f * lvl));
+            g.fillRoundedRectangle (r.reduced (1.0f, 0.0f).withTrimmedBottom (1.0f), 2.0f);
         }
 
         const int pc = n % 12;
         if (showScale && (v.scaleMask & (1u << (unsigned) pc)) != 0)
         {
             const bool isRoot = pc == theory::pcOf (v.keyRoot);
-            const float d = jmin (r.getWidth() * 0.5f, 8.0f);
-            const auto dc = Point<float> (r.getCentreX(), r.getBottom() - d * 1.4f);
-            g.setColour ((lvl > 0 ? Colours::white : pal.a.interpolatedWith (Colours::white, 0.3f)).withAlpha (isRoot ? 1.0f : 0.75f));
-            if (isRoot) g.drawEllipse (dc.x - d * 0.6f, dc.y - d * 0.6f, d * 1.2f, d * 1.2f, 1.4f);
-            g.fillEllipse (dc.x - d * 0.3f, dc.y - d * 0.3f, d * 0.6f, d * 0.6f);
+            const float d = jmin (r.getWidth() * 0.45f, 6.5f);
+            const auto dc = Point<float> (r.getCentreX(), r.getBottom() - d * 1.6f);
+            const auto mark = lvl > 0 ? Colours::black.withAlpha (0.6f) : (pal.rainbow ? pal.noteColour (n) : pal.accent);
+            g.setColour (mark);
+            if (isRoot) g.fillRect (dc.x - d * 0.5f, dc.y - d * 0.5f, d, d);
+            else        g.fillEllipse (dc.x - d * 0.32f, dc.y - d * 0.32f, d * 0.64f, d * 0.64f);
         }
     }
 
     // Pie
-    auto foot = Rectangle<float> (a.getX(), a.getBottom() + 4.0f, a.getWidth(), 18.0f);
-    g.setFont (ctx.fonts.ui (12.5f));
+    auto foot = Rectangle<float> (a.getX(), a.getBottom() + 5.0f, a.getWidth(), 17.0f);
+    g.setFont (ctx.fonts.ui (12.0f));
     g.setColour (pal.dim);
-    g.drawText (v.latin ? U8 ("La0 – Do8 · 88 teclas") : U8 ("A0 – C8 · 88 teclas"), foot, Justification::centredLeft, false);
+    g.drawText (v.latin ? U8 ("La0 a Do8, 88 teclas") : U8 ("A0 a C8, 88 teclas"), foot, Justification::centredLeft, false);
+    if (v.highlight)
+        g.drawText (U8 ("Cuadro = tónica, punto = nota de la escala"), foot, Justification::centred, false);
 
     const auto pedalTxt = String ("Pedal");
-    const auto pf = ctx.fonts.ui (12.5f);
-    const float tw = textWidth (pf, pedalTxt);
-    auto pr = foot.removeFromRight (tw + 20.0f);
-    g.drawText (pedalTxt, pr.withTrimmedRight (18.0f), Justification::centredRight, false);
-    g.setColour (v.pedal ? pal.a : pal.faint);
-    g.fillEllipse (pr.getRight() - 11.0f, pr.getCentreY() - 4.5f, 9.0f, 9.0f);
+    const float tw = textWidth (ctx.fonts.ui (12.0f), pedalTxt);
+    auto pr = foot.removeFromRight (tw + 18.0f);
+    g.drawText (pedalTxt, pr.withTrimmedRight (16.0f), Justification::centredRight, false);
+    draw::led (g, { pr.getRight() - 5.0f, pr.getCentreY() }, 3.5f, pal.accent, v.pedal);
 }
 
 void KeyboardView::mouseDown (const MouseEvent& e)
@@ -990,27 +969,28 @@ void Switch::paint (Graphics& g)
 {
     const auto& pal = ctx.vis.pal;
     auto b = getLocalBounds().toFloat();
-    auto pill = b.removeFromRight (46.0f).withSizeKeepingCentre (46.0f, 26.0f);
+    auto track = b.removeFromRight (44.0f).withSizeKeepingCentre (44.0f, 22.0f);
 
-    g.setColour (pal.dim);
+    g.setColour (pal.text.withAlpha (0.8f));
     g.setFont (ctx.fonts.ui (14.0f, 1));
-    g.drawText (text, b.withTrimmedRight (10.0f), Justification::centredRight, true);
+    g.drawText (text, b.withTrimmedRight (12.0f), Justification::centredRight, true);
 
+    draw::well (g, track, pal, 11.0f);
     if (on)
     {
-        ColourGradient cg (pal.a, pill.getX(), pill.getY(), pal.b, pill.getRight(), pill.getBottom(), false);
-        g.setGradientFill (cg);
+        g.setColour (pal.accent);
+        g.fillRoundedRectangle (track.reduced (2.0f), 9.0f);
     }
-    else
-        g.setColour (pal.dark ? Colours::white.withAlpha (0.12f) : Colour (0xff0b1a3a).withAlpha (0.14f));
-    g.fillRoundedRectangle (pill, 13.0f);
 
-    const float d = 20.0f;
-    const float x = on ? pill.getRight() - d - 3.0f : pill.getX() + 3.0f;
-    g.setColour (Colours::black.withAlpha (0.25f));
-    g.fillEllipse (x, pill.getCentreY() - d * 0.5f + 1.0f, d, d);
-    g.setColour (Colours::white);
-    g.fillEllipse (x, pill.getCentreY() - d * 0.5f, d, d);
+    const float d = 18.0f;
+    const float x = on ? track.getRight() - d - 2.0f : track.getX() + 2.0f;
+    auto knob = Rectangle<float> (x, track.getCentreY() - d * 0.5f, d, d);
+    g.setColour (Colours::black.withAlpha (0.35f));
+    g.fillEllipse (knob.translated (0.0f, 1.0f));
+    g.setColour (pal.dark ? Colour (0xffdfe1e5) : Colours::white);
+    g.fillEllipse (knob);
+    g.setColour (Colours::black.withAlpha (0.15f));
+    g.drawEllipse (knob.reduced (0.5f), 1.0f);
 }
 
 void Switch::mouseUp (const MouseEvent& e)
@@ -1039,45 +1019,50 @@ void Knob::paint (Graphics& g)
 
     const auto lf = ctx.fonts.ui (14.0f, 1);
     g.setFont (lf);
-    g.setColour (pal.dim);
+    g.setColour (pal.text.withAlpha (0.8f));
     const float lw = textWidth (lf, text) + 14.0f;
     g.drawText (text, b.removeFromLeft (lw), Justification::centredLeft, false);
 
-    const float d = jmin (b.getHeight() - 6.0f, 44.0f);
+    const float d = jmin (b.getHeight() - 4.0f, 46.0f);
     auto k = b.removeFromLeft (d).withSizeKeepingCentre (d, d);
     b.removeFromLeft (12.0f);
 
+    auto vr = b.withSizeKeepingCentre (jmin (b.getWidth(), 76.0f), 26.0f).withX (b.getX());
+    draw::well (g, vr, pal, 4.0f);
     g.setColour (pal.text);
-    g.setFont (ctx.fonts.ui (15.0f, 1));
-    g.drawText (valueText, b, Justification::centredLeft, false);
+    g.setFont (ctx.fonts.ui (14.0f, 1));
+    g.drawText (valueText, vr, Justification::centred, false);
 
     const auto c = k.getCentre();
     const float r = d * 0.5f;
     const float a0 = -MathConstants<float>::pi * 0.75f, a1 = MathConstants<float>::pi * 0.75f;
     const float av = a0 + (a1 - a0) * value;
 
-    Path track;
-    track.addCentredArc (c.x, c.y, r - 2.0f, r - 2.0f, 0.0f, a0, a1, true);
-    g.setColour (pal.faint);
-    g.strokePath (track, PathStrokeType (3.0f, PathStrokeType::curved, PathStrokeType::rounded));
+    // Marcas de escala alrededor de la perilla
+    for (int i = 0; i <= 10; ++i)
+    {
+        const float a = a0 + (a1 - a0) * (float) i / 10.0f;
+        const bool lit = (float) i / 10.0f <= value + 0.001f;
+        const auto p0 = c + Point<float> (std::sin (a), -std::cos (a)) * (r - 1.0f);
+        const auto p1 = c + Point<float> (std::sin (a), -std::cos (a)) * (r - (i % 5 == 0 ? 6.0f : 4.0f));
+        g.setColour (lit ? pal.accent : pal.faint);
+        g.drawLine ({ p0, p1 }, 1.4f);
+    }
 
-    Path arc;
-    arc.addCentredArc (c.x, c.y, r - 2.0f, r - 2.0f, 0.0f, a0, av, true);
-    ColourGradient ag (pal.a, k.getX(), k.getBottom(), pal.b, k.getRight(), k.getY(), false);
-    g.setGradientFill (ag);
-    g.strokePath (arc, PathStrokeType (3.0f, PathStrokeType::curved, PathStrokeType::rounded));
-
-    const float ir = r - 7.0f;
-    ColourGradient body (pal.dark ? Colour (0xff2a3150) : Colours::white, c.x, c.y - ir,
-                         pal.dark ? Colour (0xff121626) : Colour (0xffd7deec), c.x, c.y + ir, false);
+    const float ir = r - 8.0f;
+    g.setColour (Colours::black.withAlpha (0.35f));
+    g.fillEllipse (c.x - ir, c.y - ir + 1.5f, ir * 2.0f, ir * 2.0f);
+    ColourGradient body (pal.dark ? Colour (0xff3a3d44) : Colours::white, c.x, c.y - ir,
+                         pal.dark ? Colour (0xff1e2025) : Colour (0xffcfd3d9), c.x, c.y + ir, false);
     g.setGradientFill (body);
     g.fillEllipse (c.x - ir, c.y - ir, ir * 2.0f, ir * 2.0f);
-    g.setColour (pal.panelEdge);
+    g.setColour (pal.plateEdge);
     g.drawEllipse (c.x - ir, c.y - ir, ir * 2.0f, ir * 2.0f, 1.0f);
 
-    const auto tip = c + Point<float> (std::sin (av) * (ir - 4.0f), -std::cos (av) * (ir - 4.0f));
-    g.setColour (pal.a);
-    g.fillEllipse (tip.x - 2.5f, tip.y - 2.5f, 5.0f, 5.0f);
+    const auto p0 = c + Point<float> (std::sin (av), -std::cos (av)) * (ir * 0.25f);
+    const auto p1 = c + Point<float> (std::sin (av), -std::cos (av)) * (ir - 2.0f);
+    g.setColour (pal.dark ? Colours::white : pal.text);
+    g.drawLine ({ p0, p1 }, 2.0f);
 }
 
 void Knob::mouseDown (const MouseEvent&)
@@ -1115,15 +1100,17 @@ void DropButton::paint (Graphics& g)
 {
     const auto& pal = ctx.vis.pal;
     auto b = getLocalBounds().toFloat().reduced (1.0f);
-    g.setColour (pal.dark ? Colours::white.withAlpha (hover ? 0.10f : 0.06f) : Colours::white.withAlpha (hover ? 0.95f : 0.75f));
-    g.fillRoundedRectangle (b, 10.0f);
-    g.setColour (hover ? pal.a.withAlpha (0.6f) : pal.panelEdge);
-    g.drawRoundedRectangle (b, 10.0f, 1.0f);
+    draw::well (g, b, pal, 6.0f);
+    if (hover)
+    {
+        g.setColour (pal.text.withAlpha (0.05f));
+        g.fillRoundedRectangle (b, 6.0f);
+    }
 
     auto inner = b.reduced (12.0f, 6.0f);
     auto chev = inner.removeFromRight (14.0f);
     g.setColour (pal.dim);
-    g.setFont (ctx.fonts.ui (11.5f, 1).withExtraKerningFactor (0.05f));
+    g.setFont (ctx.fonts.ui (11.5f, 1));
     g.drawText (text, inner.removeFromTop (inner.getHeight() * 0.42f), Justification::bottomLeft, false);
     g.setColour (pal.text);
     g.setFont (fitFont (ctx.fonts, value, 15.5f, inner.getWidth(), 1));
@@ -1196,7 +1183,7 @@ void IconButton::paint (Graphics& g)
         }
         case Icon::palette:
         {
-            const float r = s * 0.30f;
+            const float r = s * 0.28f;
             if (ctx.vis.pal.rainbow)
             {
                 for (int i = 0; i < 12; ++i)
@@ -1204,18 +1191,19 @@ void IconButton::paint (Graphics& g)
                     Path p;
                     const float a0 = MathConstants<float>::twoPi * (float) i / 12.0f;
                     p.addPieSegment (c.x - r, c.y - r, r * 2, r * 2, a0, a0 + MathConstants<float>::twoPi / 12.0f, 0.0f);
-                    g.setColour (Colour::fromHSV ((float) i / 12.0f, 0.75f, 1.0f, 1.0f));
+                    g.setColour (Colour::fromHSV ((float) ((i * 7) % 12) / 12.0f, 0.62f, 1.0f, 1.0f));
                     g.fillPath (p);
                 }
             }
             else
             {
-                ColourGradient cg (pal.a, c.x - r, c.y - r, pal.b, c.x + r, c.y + r, false);
-                g.setGradientFill (cg);
+                g.setColour (pal.accent);
                 g.fillEllipse (c.x - r, c.y - r, r * 2, r * 2);
             }
-            g.setColour (pal.text.withAlpha (0.5f));
-            g.drawEllipse (c.x - r - 3, c.y - r - 3, r * 2 + 6, r * 2 + 6, 1.2f);
+            g.setColour (pal.plateEdge);
+            g.drawEllipse (c.x - r, c.y - r, r * 2, r * 2, 1.0f);
+            g.setColour (pal.dim);
+            g.drawEllipse (c.x - r - 3.5f, c.y - r - 3.5f, r * 2 + 7.0f, r * 2 + 7.0f, 1.0f);
             break;
         }
     }
@@ -1231,34 +1219,32 @@ Rectangle<float> Segmented::segArea() const
 {
     auto b = getLocalBounds().toFloat();
     const float lw = textWidth (ctx.fonts.ui (14.0f, 1), text) + 12.0f;
-    return b.withTrimmedLeft (lw).withSizeKeepingCentre (b.getWidth() - lw, 30.0f);
+    return b.withTrimmedLeft (lw).withSizeKeepingCentre (b.getWidth() - lw, 32.0f);
 }
 
 void Segmented::paint (Graphics& g)
 {
     const auto& pal = ctx.vis.pal;
     auto b = getLocalBounds().toFloat();
-    g.setColour (pal.dim);
+    g.setColour (pal.text.withAlpha (0.8f));
     g.setFont (ctx.fonts.ui (14.0f, 1));
     g.drawText (text, b, Justification::centredLeft, false);
 
-    auto s = segArea();
-    g.setColour (pal.dark ? Colours::white.withAlpha (0.06f) : Colour (0xff0b1a3a).withAlpha (0.06f));
-    g.fillRoundedRectangle (s, 15.0f);
+    auto sArea = segArea();
+    draw::well (g, sArea, pal, 6.0f);
 
-    const float w = s.getWidth() / (float) options.size();
+    const float w = sArea.getWidth() / (float) options.size();
     for (int i = 0; i < options.size(); ++i)
     {
-        auto r = Rectangle<float> (s.getX() + (float) i * w, s.getY(), w, s.getHeight()).reduced (2.0f);
+        auto r = Rectangle<float> (sArea.getX() + (float) i * w, sArea.getY(), w, sArea.getHeight()).reduced (3.0f);
         if (i == selected)
         {
-            ColourGradient cg (pal.a.withAlpha (0.9f), r.getX(), r.getY(), pal.b.withAlpha (0.9f), r.getRight(), r.getBottom(), false);
-            g.setGradientFill (cg);
-            g.fillRoundedRectangle (r, 13.0f);
+            draw::plate (g, r, pal, 4.0f);
+            draw::led (g, { r.getX() + 9.0f, r.getCentreY() }, 2.6f, pal.accent, true);
         }
-        g.setColour (i == selected ? Colours::white : pal.dim);
+        g.setColour (i == selected ? pal.text : pal.dim);
         g.setFont (ctx.fonts.ui (13.5f, 1));
-        g.drawText (options[i], r, Justification::centred, false);
+        g.drawText (options[i], r.withTrimmedLeft (i == selected ? 10.0f : 0.0f), Justification::centred, false);
     }
 }
 
@@ -1313,49 +1299,47 @@ void TopBar::paint (Graphics& g)
 {
     const auto& pal = ctx.vis.pal;
     auto b = getLocalBounds().toFloat();
-    draw::glassPanel (g, b, pal, 18.0f);
+    draw::plate (g, b, pal);
 
-    // Logo
-    auto logo = b.reduced (20.0f, 10.0f).withWidth (220.0f);
-    const auto lf = ctx.fonts.ui (30.0f, 2).withExtraKerningFactor (-0.01f);
-    const float lw = textWidth (lf, "MidiSky");
+    // Marca: una pequeña constelación (tres estrellas unidas) y el nombre
+    auto logo = b.reduced (18.0f, 10.0f).withWidth (230.0f);
     {
-        ColourGradient lg (pal.a, logo.getX(), logo.getY(), pal.b, logo.getX() + lw, logo.getBottom(), false);
-        g.setGradientFill (lg);
-        g.setFont (lf);
-        g.drawText ("MidiSky", logo.withHeight (34.0f).translated (0.0f, -1.0f), Justification::centredLeft, false);
-        g.fillPath (draw::star ({ logo.getX() + lw + 8.0f, logo.getY() + 6.0f }, 6.0f, 0.28f));
+        const float x0 = logo.getX() + 2.0f, y0 = logo.getY() + 6.0f;
+        const Point<float> st[4] = { { x0, y0 + 16.0f }, { x0 + 9.0f, y0 + 4.0f }, { x0 + 19.0f, y0 + 10.0f }, { x0 + 26.0f, y0 } };
+        g.setColour (pal.dim);
+        for (int i = 0; i < 3; ++i) g.drawLine ({ st[i], st[i + 1] }, 1.0f);
+        for (int i = 0; i < 4; ++i)
+        {
+            const float rr = i == 3 ? 2.8f : 2.0f;
+            g.setColour (i == 3 ? pal.accent : pal.text);
+            g.fillEllipse (st[i].x - rr, st[i].y - rr, rr * 2.0f, rr * 2.0f);
+        }
     }
+    auto word = logo.withTrimmedLeft (38.0f);
+    g.setColour (pal.text);
+    g.setFont (ctx.fonts.ui (27.0f, 2).withExtraKerningFactor (-0.01f));
+    g.drawText ("MidiSky", word.withHeight (30.0f), Justification::centredLeft, false);
     g.setColour (pal.dim);
     g.setFont (ctx.fonts.ui (12.5f));
-    g.drawText ("visualizador de escalas y acordes", logo.withTrimmedTop (32.0f), Justification::centredLeft, false);
+    g.drawText ("escalas, acordes y notas", word.withTrimmedTop (30.0f), Justification::centredLeft, false);
 
     // MIDI
     auto m = midiArea();
-    if (midiClickable)
-    {
-        g.setColour (pal.text.withAlpha (0.05f));
-        g.fillRoundedRectangle (m.withSizeKeepingCentre (jmin (m.getWidth(), 280.0f), m.getHeight()), 10.0f);
-    }
-    auto mm = m.withSizeKeepingCentre (jmin (m.getWidth(), 280.0f), m.getHeight()).reduced (12.0f, 4.0f);
+    auto box = m.withSizeKeepingCentre (jmin (m.getWidth(), 290.0f), m.getHeight());
+    draw::well (g, box, pal, 6.0f);
+    auto mm = box.reduced (12.0f, 5.0f);
     g.setColour (pal.dim);
-    g.setFont (ctx.fonts.ui (11.5f, 1).withExtraKerningFactor (0.08f));
+    g.setFont (ctx.fonts.ui (11.5f, 1));
     g.drawText ("MIDI", mm.removeFromTop (mm.getHeight() * 0.42f), Justification::bottomLeft, false);
 
-    auto dotR = Rectangle<float> (mm.getX(), mm.getCentreY() - 5.0f, 10.0f, 10.0f);
-    const auto on = Colour (0xff3ddc97);
-    if (midiActivity)
-    {
-        ColourGradient glow (pal.a.withAlpha (0.9f), dotR.getCentreX(), dotR.getCentreY(), pal.a.withAlpha (0.0f), dotR.getCentreX() + 12.0f, dotR.getCentreY(), true);
-        g.setGradientFill (glow);
-        g.fillEllipse (dotR.expanded (8.0f));
-    }
-    g.setColour (midiActivity ? pal.a.interpolatedWith (Colours::white, 0.4f) : (midiConnected ? on : pal.faint));
-    g.fillEllipse (dotR);
+    const auto ledC = Point<float> (mm.getX() + 4.0f, mm.getCentreY());
+    if (midiActivity)        draw::led (g, ledC, 4.0f, pal.accent, true);
+    else if (midiConnected)  draw::led (g, ledC, 4.0f, Colour (0xff42d67e), true);
+    else                     draw::led (g, ledC, 4.0f, pal.dim, false);
 
     g.setColour (pal.text);
     g.setFont (fitFont (ctx.fonts, midiText, 14.5f, mm.getWidth() - 40.0f, 1));
-    g.drawText (midiText, mm.withTrimmedLeft (18.0f).withTrimmedRight (midiClickable ? 18.0f : 0.0f), Justification::centredLeft, true);
+    g.drawText (midiText, mm.withTrimmedLeft (16.0f).withTrimmedRight (midiClickable ? 18.0f : 0.0f), Justification::centredLeft, true);
 
     if (midiClickable)
     {
@@ -1406,10 +1390,15 @@ void ControlStrip::paint (Graphics& g)
 {
     const auto& pal = ctx.vis.pal;
     auto b = getLocalBounds().toFloat();
-    draw::glassPanel (g, b, pal, 16.0f);
-    g.setColour (pal.faint);
+    draw::plate (g, b, pal);
     for (auto x : dividers)
-        if (x > 0) g.fillRect (x, b.getY() + 14.0f, 1.0f, b.getHeight() - 28.0f);
+        if (x > 0)
+        {
+            g.setColour (pal.plateEdge.withMultipliedAlpha (0.8f));
+            g.fillRect (x, b.getY() + 12.0f, 1.0f, b.getHeight() - 24.0f);
+            g.setColour (pal.plateHighlight);
+            g.fillRect (x + 1.0f, b.getY() + 12.0f, 1.0f, b.getHeight() - 24.0f);
+        }
 }
 
 void ControlStrip::resized()
@@ -1440,7 +1429,7 @@ void ControlStrip::resized()
 //==============================================================================
 SkinPicker::SkinPicker (UiContext& c, int cur) : ctx (c), current (cur)
 {
-    setSize (4 * 92 + 24, 2 * 92 + 44);
+    setSize (4 * 92 + 24, 3 * 92 + 44);
 }
 
 Rectangle<float> SkinPicker::cell (int i) const
@@ -1453,18 +1442,18 @@ void SkinPicker::paint (Graphics& g)
     const auto& pal = ctx.vis.pal;
     g.setColour (pal.text);
     g.setFont (ctx.fonts.ui (15.0f, 2));
-    g.drawText ("Skins", Rectangle<float> (16.0f, 8.0f, 200.0f, 24.0f), Justification::centredLeft, false);
+    g.drawText ("Color de la luz", Rectangle<float> (16.0f, 8.0f, 240.0f, 24.0f), Justification::centredLeft, false);
 
     const auto& list = skins();
     for (int i = 0; i < (int) list.size(); ++i)
     {
-        auto r = cell (i).reduced (6.0f);
+        auto r = cell (i).reduced (5.0f);
         if (i == hover)
         {
-            g.setColour (pal.text.withAlpha (0.07f));
-            g.fillRoundedRectangle (r, 10.0f);
+            g.setColour (pal.text.withAlpha (0.06f));
+            g.fillRoundedRectangle (r, 6.0f);
         }
-        auto sw = r.removeFromTop (r.getHeight() - 22.0f).withSizeKeepingCentre (44.0f, 44.0f);
+        auto sw = r.removeFromTop (r.getHeight() - 22.0f).withSizeKeepingCentre (40.0f, 40.0f);
         const auto& s = list[(size_t) i];
         if (s.rainbow)
         {
@@ -1473,29 +1462,27 @@ void SkinPicker::paint (Graphics& g)
                 Path p;
                 const float a0 = MathConstants<float>::twoPi * (float) k / 12.0f;
                 p.addPieSegment (sw, a0, a0 + MathConstants<float>::twoPi / 12.0f, 0.0f);
-                g.setColour (Colour::fromHSV ((float) k / 12.0f, 0.75f, 1.0f, 1.0f));
+                g.setColour (Colour::fromHSV ((float) ((k * 7) % 12) / 12.0f, 0.62f, 1.0f, 1.0f));
                 g.fillPath (p);
             }
         }
         else
         {
-            auto ca = s.custom ? ctx.vis.pal.a : s.a;
-            auto cb = s.custom ? ctx.vis.pal.b : s.b;
-            if (s.custom && current != i) { ca = Colour (0xff4de1ff); cb = ca.withRotatedHue (0.1f); }
-            ColourGradient cg (ca, sw.getX(), sw.getY(), cb, sw.getRight(), sw.getBottom(), false);
-            g.setGradientFill (cg);
+            g.setColour (s.custom ? (i == current ? pal.accent : Colour (0xff4de1ff)) : s.light);
             g.fillEllipse (sw);
             if (s.custom)
             {
-                g.setColour (Colours::white.withAlpha (0.9f));
+                g.setColour (Colours::black.withAlpha (0.6f));
                 g.fillRect (sw.getCentreX() - 1.0f, sw.getCentreY() - 7.0f, 2.0f, 14.0f);
                 g.fillRect (sw.getCentreX() - 7.0f, sw.getCentreY() - 1.0f, 14.0f, 2.0f);
             }
         }
+        g.setColour (pal.plateEdge);
+        g.drawEllipse (sw, 1.0f);
         if (i == current)
         {
             g.setColour (pal.text);
-            g.drawEllipse (sw.expanded (4.0f), 2.0f);
+            g.drawEllipse (sw.expanded (4.0f), 1.5f);
         }
         g.setColour (i == current ? pal.text : pal.dim);
         g.setFont (ctx.fonts.ui (12.5f, 1));
