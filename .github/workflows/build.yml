@@ -12,7 +12,7 @@ concurrency:
 jobs:
   mac:
     name: Mac (VST3, AU y app)
-    runs-on: macos-latest
+    runs-on: macos-15-intel   # las Mac arm64 de GitHub están saturadas; Intel compila el binario universal igual
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
