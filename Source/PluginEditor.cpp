@@ -90,10 +90,13 @@ MidiSkyEditor::MidiSkyEditor (MidiSkyProcessor& p)
     rail.latency.onClick = [this] { showLatencyPanel(); };
     rail.themeBtn.onClick   = [this] { showThemePicker(); };
     rail.dayBtn.onClick     = [this] { setDayNight (prefs->isNight() ? 0 : 1); };
-    rail.resetBtn.onClick   = [this]
     {
-        MessageManager::callAsync ([safe = Component::SafePointer<MidiSkyEditor> (this)] { if (auto* ed = safe.getComponent()) ed->resetLayout(); });
-    };
+        Component::SafePointer<MidiSkyEditor> safeEditor (this);
+        rail.resetBtn.onClick = [safeEditor]
+        {
+            MessageManager::callAsync ([safeEditor] { if (auto* ed = safeEditor.getComponent()) ed->resetLayout(); });
+        };
+    }
     rail.skinBtn.onClick    = [this] { showSkinPicker(); };
     rail.transpBtn.onClick  = [this] { setTransparent (! prefs->transparent); };
     rail.splitBtn.onClick   = [this] { if (keyboard.floating) dock (keyboard); else detach (keyboard); };
