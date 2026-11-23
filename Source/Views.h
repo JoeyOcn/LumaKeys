@@ -28,69 +28,93 @@ struct Vis
     theory::Chord chord;
     theory::Degree degree;
     std::vector<theory::Diatonic> diatonic;
+    int activeDegree = -1;
+    std::array<float, 7> degreeGlow {};
 
-    // Animación del nombre del acorde
+    // Animaciones
     juce::String bigText, prevBigText;
     float bigFade = 1.0f;
+    double time = 0.0;                   // segundos (para lo que se mueve solo)
+    float knobAngle = 0.0f;              // la perilla del círculo apunta a la tonalidad
+    float viewWhite = 28.0f;             // primera tecla blanca visible (animada al cambiar de octava)
+    float viewWhites = 22.0f;            // cuántas teclas blancas caben (animado al cambiar de octavas)
 
     bool latin = false;
     bool sevenths = false;
     bool hideParams = false;
     bool transparent = false;
-    Palette pal;
+    Skin pal;
 };
 
 struct UiContext
 {
     Vis& vis;
     Fonts& fonts;
-    Textures& tex;
 };
 
 //==============================================================================
 namespace draw
 {
-    // Panel con la forma de la skin (redondo, pixel, esquinas cortadas, doble filete)
-    void panel (juce::Graphics&, juce::Rectangle<float>, juce::Colour fill, juce::Colour border, const Palette&, float k, float radiusScale = 1.0f);
-    juce::Path panelPath (juce::Rectangle<float>, const Palette&, float k, float radiusScale = 1.0f);
-    void body (juce::Graphics&, juce::Rectangle<float>, const Palette&, Textures&);
-    void texture (juce::Graphics&, const juce::Image&, juce::Rectangle<float>, float alpha = 1.0f);
-    void themeLight (juce::Graphics&, juce::Rectangle<float>, const Palette&);   // luz y partículas (encima)
-    void themeScene (juce::Graphics&, juce::Rectangle<float>, const Palette&);   // paisaje, sol o luna (al fondo)
-    // Marco de la ventana con esquinas redondas, bisel y sombra interior
-    juce::Path chassisPath (juce::Rectangle<float>, const Palette&, float k);
-    void chassis (juce::Graphics&, juce::Rectangle<float>, const Palette&, float k, Textures&, bool backdrop);
-    void shadowText (juce::Graphics&, const juce::String&, juce::Rectangle<float>, juce::Justification, juce::Colour, bool shadow);
-    void icon (juce::Graphics&, const juce::String& name, juce::Rectangle<float>, juce::Colour, float stroke = 1.6f);
     float textWidth (const juce::Font&, const juce::String&);
-    juce::Font fit (const Fonts&, FontKind, const juce::String&, float maxH, float maxW, bool display);
+    juce::Font fitUi (const Fonts&, const juce::String&, float maxH, float maxW, int weight);
+
+    // El aparato: cuerpo con esquinas redondas, bisel y sombra
+    juce::Path devicePath (juce::Rectangle<float>, const Skin&, float k);
+    void device (juce::Graphics&, juce::Rectangle<float>, const Skin&, float k, bool backdrop);
+    // Botón físico (press 0..1 lo hunde)
+    void button (juce::Graphics&, juce::Rectangle<float>, const Skin&, float radius, float press, bool active, float hover = 0.0f);
+    // Zona hundida en el cuerpo (placa del círculo, cama del teclado)
+    void recess (juce::Graphics&, juce::Rectangle<float>, const Skin&, float radius, juce::Colour fill);
+    // Tarjeta levantada (pentagrama)
+    void card (juce::Graphics&, juce::Rectangle<float>, const Skin&, float radius);
+    // Pantalla negra con marco
+    void screen (juce::Graphics&, juce::Rectangle<float>, const Skin&, float k);
+    // Perilla con tapa de color
+    void knobBody (juce::Graphics&, juce::Point<float> c, float r, const Skin&, juce::Colour cap);
+
+    void icon (juce::Graphics&, const juce::String& name, juce::Rectangle<float>, juce::Colour, float stroke = 1.7f);
+    // Logo: conector MIDI con cara de gato
+    void catLogo (juce::Graphics&, juce::Rectangle<float>, juce::Colour line, juce::Colour eyes);
+    void shadowText (juce::Graphics&, const juce::String&, juce::Rectangle<float>, juce::Justification, juce::Colour, bool shadow);
 }
 
-// La luz del tema ya dibujada, para no recalcularla en cada cuadro.
-struct ThemeCache
+//==============================================================================
+// Ayuda para animar: corre a 60 cuadros por segundo solo mientras algo se mueve.
+class Animated : private juce::Timer
 {
-    void draw (juce::Graphics&, juce::Rectangle<float>, const Palette&, float scale);
-    juce::Image image;
-    juce::String key;
+public:
+    ~Animated() override { stopTimer(); }
+protected:
+    void animate() { if (! isTimerRunning()) startTimerHz (60); }
+    virtual bool stepAnimation (float dt) = 0;   // true = sigue moviéndose
+private:
+    void timerCallback() override { if (! stepAnimation (1.0f / 60.0f)) stopTimer(); }
 };
 
+static inline float approach (float v, float target, float rate, float dt)
+{
+    const float a = 1.0f - std::pow (1.0f - rate, dt * 60.0f);
+    return std::abs (target - v) < 0.002f ? target : v + (target - v) * a;
+}
+
 //==============================================================================
-// Controles propios
-class Switch : public juce::Component
+class Switch : public juce::Component, private Animated
 {
 public:
     explicit Switch (UiContext& c) : ctx (c) {}
     void paint (juce::Graphics&) override;
     void mouseUp (const juce::MouseEvent&) override;
-    void setOn (bool v) { if (on != v) { on = v; repaint(); } }
+    void setOn (bool v);
     std::function<void (bool)> onChange;
 
 private:
+    bool stepAnimation (float dt) override;
     UiContext& ctx;
     bool on = false;
+    float pos = 0.0f;
 };
 
-class Knob : public juce::Component
+class Knob : public juce::Component, private Animated
 {
 public:
     explicit Knob (UiContext& c) : ctx (c) {}
@@ -104,66 +128,82 @@ public:
     std::function<void (float)> onValue;
     std::function<void()> onGestureStart, onGestureEnd, onReset;
     juce::String valueText;
+    int capIndex = 1;
 
 private:
+    bool stepAnimation (float dt) override;
     UiContext& ctx;
-    float value = 0.5f, dragStart = 0.5f;
+    float value = 0.5f, shown = 0.5f, dragStart = 0.5f;
+    bool dragging = false;
 };
 
-class Segmented : public juce::Component
+class Segmented : public juce::Component, private Animated
 {
 public:
     Segmented (UiContext& c, juce::StringArray opts) : ctx (c), options (std::move (opts)) {}
     void paint (juce::Graphics&) override;
     void mouseUp (const juce::MouseEvent&) override;
-    void setSelected (int i) { if (i != selected) { selected = i; repaint(); } }
+    void setSelected (int i);
+    int getSelected() const { return selected; }
     std::function<void (int)> onChange;
+    float fontScale = 1.0f;
 
 private:
+    bool stepAnimation (float dt) override;
     UiContext& ctx;
     juce::StringArray options;
     int selected = 0;
+    float pos = 0.0f;
 };
 
-class IconButton : public juce::Component, public juce::SettableTooltipClient
+// Botón físico con ícono y/o texto, que se hunde al presionarlo
+class PushButton : public juce::Component, public juce::SettableTooltipClient, private Animated
 {
 public:
-    IconButton (UiContext& c, juce::String iconName, juce::String tip) : ctx (c), iconId (std::move (iconName)) { setTooltip (tip); setTitle (tip); }
+    PushButton (UiContext& c, juce::String iconName, juce::String tip, juce::String text = {});
     void paint (juce::Graphics&) override;
+    void mouseDown (const juce::MouseEvent&) override;
     void mouseUp (const juce::MouseEvent&) override;
-    void mouseEnter (const juce::MouseEvent&) override { hover = true; repaint(); }
-    void mouseExit (const juce::MouseEvent&) override  { hover = false; repaint(); }
+    void mouseEnter (const juce::MouseEvent&) override { hoverT = 1.0f; animate(); }
+    void mouseExit (const juce::MouseEvent&) override  { hoverT = 0.0f; animate(); }
     void setIcon (const juce::String& n) { if (n != iconId) { iconId = n; repaint(); } }
     void setActive (bool a) { if (a != active) { active = a; repaint(); } }
+    void setLabel (const juce::String& t) { if (t != label) { label = t; repaint(); } }
+    bool isActive() const { return active; }
     std::function<void()> onClick;
-    juce::String label;          // texto junto al ícono (si cabe)
-    bool framed = true;
-    bool lightOnDark = false;   // para barras sobre fondos transparentes
+    bool framed = true;          // false: sin botón (solo ícono), para barras
+    bool lightOnDark = false;    // sobre fondos transparentes
+    juce::Colour swatch;         // un puntito de color junto al texto
+    float radiusScale = 0.3f;
 
 private:
+    bool stepAnimation (float dt) override;
     UiContext& ctx;
-    juce::String iconId;
-    bool hover = false, active = false;
+    juce::String iconId, label;
+    bool active = false, down = false;
+    float press = 0.0f, hover = 0.0f, hoverT = 0.0f;
 };
 
-class FieldButton : public juce::Component
+// Botón con etiqueta pequeña y valor (MIDI, Tonalidad, Escala, Latencia)
+class FieldButton : public juce::Component, private Animated
 {
 public:
     FieldButton (UiContext& c, juce::String label) : ctx (c), text (std::move (label)) {}
     void paint (juce::Graphics&) override;
+    void mouseDown (const juce::MouseEvent&) override { down = true; animate(); }
     void mouseUp (const juce::MouseEvent&) override;
-    void mouseEnter (const juce::MouseEvent&) override { hover = true; repaint(); }
-    void mouseExit (const juce::MouseEvent&) override  { hover = false; repaint(); }
     void setValueText (const juce::String& v) { if (v != value) { value = v; repaint(); } }
     void setLed (int mode) { if (mode != led) { led = mode; repaint(); } } // -1 sin led, 0 apagado, 1 conectado, 2 actividad
     std::function<void()> onClick;
     float k = 1.0f;
 
 private:
+    bool stepAnimation (float dt) override;
     UiContext& ctx;
     juce::String text, value;
-    bool hover = false;
     int led = -1;
+    bool down = false;
+    float press = 0.0f;
 };
 
 //==============================================================================
@@ -173,72 +213,102 @@ public:
     explicit RailBar (UiContext& c);
     void paint (juce::Graphics&) override;
     void resized() override;
-    void setStatus (const juce::String& s, double seconds = 4.0);
-    void tick (double nowMs);
-
-    FieldButton midi, key, scale, latency;
-    IconButton dayBtn, themeBtn, skinBtn, transpBtn, splitBtn, windowsBtn, resetBtn, hideBtn, menuBtn;
-    float k = 1.0f;
     void setShowReset (bool s) { if (s != showReset) { showReset = s; resized(); } }
 
+    FieldButton midi, key, scale, latency;
+    PushButton dayBtn, colourBtn, transpBtn, splitBtn, windowsBtn, resetBtn, hideBtn, menuBtn;
+    float k = 1.0f;
+
 private:
     UiContext& ctx;
-    juce::String status;
-    double statusUntil = 0.0;
-    juce::Rectangle<float> statusArea;
     bool showReset = false;
+    juce::Rectangle<float> logoArea;
 };
 
 //==============================================================================
-// Aviso corto que aparece debajo de la barra
-class Toast : public juce::Component
+// Panel que se abre encima de la interfaz. Se cierra con la X, con Esc o con un clic afuera.
+class Popover : public juce::Component
 {
 public:
-    explicit Toast (UiContext& c) : ctx (c) { setInterceptsMouseClicks (false, false); setVisible (false); }
-    void show (const juce::String& text, double seconds = 3.5);
-    void tick (double nowMs);
+    Popover (UiContext& c, const juce::String& title, std::unique_ptr<juce::Component> content, juce::Rectangle<int> anchor);
     void paint (juce::Graphics&) override;
-    juce::String text;
+    void resized() override;
+    void mouseDown (const juce::MouseEvent&) override;
+    bool keyPressed (const juce::KeyPress&) override;
+    void parentHierarchyChanged() override { resized(); }
+    std::function<void()> onClose;
+    juce::String anchorId;
 
 private:
+    void requestClose();
     UiContext& ctx;
-    double until = 0.0;
+    juce::String title;
+    std::unique_ptr<juce::Component> content;
+    juce::Rectangle<int> anchor;
+    juce::Rectangle<int> panel;
+    PushButton closeBtn;
 };
 
 //==============================================================================
-class ThemePicker : public juce::Component
+// Selector de color: muestras rápidas + selector completo
+class ColourPicker : public juce::Component, private juce::ChangeListener
 {
 public:
-    ThemePicker (UiContext& c, int currentTheme, int dayNightMode);
+    explicit ColourPicker (UiContext& c);
+    ~ColourPicker() override;
     void paint (juce::Graphics&) override;
     void resized() override;
     void mouseUp (const juce::MouseEvent&) override;
-    void mouseMove (const juce::MouseEvent&) override;
-    void mouseExit (const juce::MouseEvent&) override { hover = -1; repaint(); }
-    std::function<void (int)> onPick, onMode;
+    void setColour (juce::Colour c);
+    std::function<void (juce::Colour)> onColour;
 
 private:
-    juce::Rectangle<float> cell (int i) const;
-    bool showsNight() const;
+    void changeListenerCallback (juce::ChangeBroadcaster*) override;
+    juce::Rectangle<float> swatchRect (int i) const;
     UiContext& ctx;
-    Segmented mode;
-    int current = 0, hover = -1, modeSel = 0;
+    juce::ColourSelector selector { juce::ColourSelector::showColourspace | juce::ColourSelector::showSliders, 4, 0 };
+    juce::Colour current;
+    bool settingProgrammatically = false;
 };
 
-//==============================================================================
-class SkinPicker : public juce::Component
+// Color de toda la interfaz: estilo, día/noche, tono y acento
+class InterfacePanel : public juce::Component
 {
 public:
-    SkinPicker (UiContext& c, int current);
+    InterfacePanel (UiContext& c, Prefs& p);
     void paint (juce::Graphics&) override;
+    void resized() override;
     void mouseUp (const juce::MouseEvent&) override;
-    void mouseMove (const juce::MouseEvent&) override;
-    std::function<void (int)> onPick;
 
 private:
-    juce::Rectangle<float> cell (int i) const;
+    juce::Rectangle<float> lookTile (int i) const;
+    juce::Rectangle<float> paletteChip (int i) const;
+    void refreshPicker();
     UiContext& ctx;
-    int current = 0, hover = -1;
+    Prefs& prefs;
+    Segmented mode, target;
+    ColourPicker picker;
+    PushButton resetBtn;
+    juce::Rectangle<int> looksArea, chipsArea;
+};
+
+// Color y estilo de las teclas
+class KeysPanel : public juce::Component
+{
+public:
+    KeysPanel (UiContext& c, Prefs& p);
+    void paint (juce::Graphics&) override;
+    void resized() override;
+
+private:
+    void refreshPicker();
+    UiContext& ctx;
+    Prefs& prefs;
+    Segmented style, target;
+    Switch rainbow;
+    ColourPicker picker;
+    PushButton resetBtn;
+    juce::Rectangle<int> rainbowRow;
 };
 
 class LatencyPanel : public juce::Component
@@ -257,5 +327,16 @@ private:
     bool standalone;
     std::function<juce::String()> deviceInfo;
     std::function<void (int)> setBuffer;
-    juce::OwnedArray<juce::TextButton> bufferButtons;
+    juce::OwnedArray<PushButton> bufferButtons;
+};
+
+class TextPanel : public juce::Component
+{
+public:
+    TextPanel (UiContext& c, juce::String text, int width);
+    void paint (juce::Graphics&) override;
+
+private:
+    UiContext& ctx;
+    juce::String text;
 };

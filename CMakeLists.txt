@@ -10,7 +10,7 @@ if(APPLE)
     endif()
 endif()
 
-project(MidiSky VERSION 1.2.0 LANGUAGES C CXX)
+project(MidiCat VERSION 1.3.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -28,8 +28,8 @@ if(APPLE)
     list(APPEND MIDISKY_FORMATS AU)
 endif()
 
-juce_add_plugin(MidiSky
-    PRODUCT_NAME "MidiSky"
+juce_add_plugin(MidiCat
+    PRODUCT_NAME "Midi Cat"
     COMPANY_NAME "Joey Ocn"
     COMPANY_WEBSITE "https://github.com/JoeyOcn"
     BUNDLE_ID "com.joeyocn.midisky"
@@ -44,14 +44,14 @@ juce_add_plugin(MidiSky
     COPY_PLUGIN_AFTER_BUILD FALSE
     VST3_CATEGORIES Instrument Tools
     AU_MAIN_TYPE kAudioUnitType_MusicDevice
-    DESCRIPTION "Visualizador de escalas, acordes y notas con piano"
+    DESCRIPTION "Visualizador de escalas, acordes y notas con pianos"
     ICON_BIG "${CMAKE_CURRENT_SOURCE_DIR}/assets/icon/icon_1024.png"
     ICON_SMALL "${CMAKE_CURRENT_SOURCE_DIR}/assets/icon/icon_256.png"
     MICROPHONE_PERMISSION_ENABLED FALSE)
 
-juce_generate_juce_header(MidiSky)
+juce_generate_juce_header(MidiCat)
 
-target_sources(MidiSky PRIVATE
+target_sources(MidiCat PRIVATE
     Source/PluginProcessor.cpp
     Source/PluginEditor.cpp
     Source/PianoEngine.cpp
@@ -59,38 +59,35 @@ target_sources(MidiSky PRIVATE
     Source/Views.cpp
     Source/Sections.cpp
     Source/Floating.cpp
-    Source/ThemeArt.cpp
     Source/Style.cpp)
 
-file(GLOB MIDISKY_PIANO_SAMPLES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/assets/piano/*.ogg)
-file(GLOB MIDISKY_TEXTURES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/assets/tex/*.jpg)
+file(GLOB MIDISKY_PIANO_SAMPLES CONFIGURE_DEPENDS
+    ${CMAKE_CURRENT_SOURCE_DIR}/assets/piano/*.ogg
+    ${CMAKE_CURRENT_SOURCE_DIR}/assets/steinway/*.ogg
+    ${CMAKE_CURRENT_SOURCE_DIR}/assets/rhodes/*.ogg)
 juce_add_binary_data(MidiSkyData
     HEADER_NAME MidiSkyData.h
     NAMESPACE MidiSkyData
     SOURCES
         ${MIDISKY_PIANO_SAMPLES}
-        ${MIDISKY_TEXTURES}
         assets/fonts/Bravura.otf
-        assets/fonts/ShipporiMincho-Bold.ttf
-        assets/fonts/ShipporiMincho-ExtraBold.ttf
         assets/fonts/ZenKakuGothicNew-Regular.ttf
         assets/fonts/ZenKakuGothicNew-Medium.ttf
         assets/fonts/ZenKakuGothicNew-Bold.ttf
-        assets/fonts/PressStart2P-Regular.ttf
         assets/fonts/Jersey10-Regular.ttf)
 
 if(MSVC)
-    target_compile_options(MidiSky PRIVATE /utf-8)
+    target_compile_options(MidiCat PRIVATE /utf-8)
 else()
     set_target_properties(MidiSkyData PROPERTIES POSITION_INDEPENDENT_CODE ON)
 endif()
 
 option(MIDISKY_DEMO "Modo de prueba (notas por variable de entorno)" OFF)
 if(MIDISKY_DEMO)
-    target_compile_definitions(MidiSky PUBLIC MIDISKY_DEMO=1)
+    target_compile_definitions(MidiCat PUBLIC MIDISKY_DEMO=1)
 endif()
 
-target_compile_definitions(MidiSky PUBLIC
+target_compile_definitions(MidiCat PUBLIC
     JUCE_WEB_BROWSER=0
     JUCE_USE_CURL=0
     JUCE_VST3_CAN_REPLACE_VST2=0
@@ -98,7 +95,7 @@ target_compile_definitions(MidiSky PUBLIC
     JUCE_USE_OGGVORBIS=1
     JUCE_MODAL_LOOPS_PERMITTED=0)
 
-target_link_libraries(MidiSky
+target_link_libraries(MidiCat
     PRIVATE
         MidiSkyData
         juce::juce_audio_utils

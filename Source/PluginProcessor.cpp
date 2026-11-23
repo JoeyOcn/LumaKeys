@@ -60,6 +60,8 @@ juce::AudioProcessorValueTreeState::ParameterLayout MidiSkyProcessor::createLayo
     AudioProcessorValueTreeState::ParameterLayout layout;
 
     layout.add (std::make_unique<AudioParameterBool> (ParameterID { "piano", 1 }, "Sonido de piano", true));
+    layout.add (std::make_unique<AudioParameterChoice> (ParameterID { "instrument", 1 }, "Instrumento", instrumentNames(), 0));
+    layout.add (std::make_unique<AudioParameterBool> (ParameterID { "sustain", 1 }, U8 ("Pedal (sostener)"), false));
 
     layout.add (std::make_unique<AudioParameterFloat> (
         ParameterID { "volume", 1 }, "Volumen",
@@ -95,6 +97,8 @@ MidiSkyProcessor::MidiSkyProcessor()
     pianoOn = apvts.getRawParameterValue ("piano");
     volume  = apvts.getRawParameterValue ("volume");
     latencyMs = apvts.getRawParameterValue ("latency");
+    instrumentParam = apvts.getRawParameterValue ("instrument");
+    sustainParam = apvts.getRawParameterValue ("sustain");
 }
 
 bool MidiSkyProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
@@ -108,9 +112,11 @@ void MidiSkyProcessor::prepareToPlay (double sampleRate, int)
     currentRate.store (sampleRate);
     delayQueue.ensureSize (16384);
     delayScratch.ensureSize (16384);
+    pedalScratch.ensureSize (8192);
     delayQueue.clear();
     lastDelaySamples = 0;
     piano.prepare (sampleRate);
+    wasLatched = false;   // si el pedal en pantalla está puesto, se vuelve a mandar
     gainSmooth.reset (sampleRate, 0.03);
     gainSmooth.setCurrentAndTargetValue (juce::Decibels::decibelsToGain (volume->load(), -47.9f));
 }
@@ -172,6 +178,24 @@ void MidiSkyProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mid
 
     uiKeyboard.processNextMidiBuffer (midi, 0, n, true);
 
+    // Pedal en pantalla: sostiene como un pedal de verdad (y mientras está puesto ignora el pedal físico)
+    const bool latch = sustainParam->load() > 0.5f;
+    if (latch || latch != wasLatched)
+    {
+        pedalScratch.clear();
+        if (latch != wasLatched)
+            pedalScratch.addEvent (juce::MidiMessage::controllerEvent (1, 64, latch ? 127 : 0), 0);
+        for (const auto meta : midi)
+        {
+            const auto m = meta.getMessage();
+            if (latch && m.isController() && m.getControllerNumber() == 64) continue;
+            pedalScratch.addEvent (m, meta.samplePosition);
+        }
+        midi.swapWith (pedalScratch);
+        wasLatched = latch;
+    }
+    piano.setInstrument ((int) instrumentParam->load());
+
     for (const auto meta : midi)
         notes.handle (meta.getMessage());
 
@@ -195,9 +219,10 @@ void MidiSkyProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mid
         for (int c = 0; c < chans; ++c)
         {
             auto* d = buffer.getWritePointer (c);
-            // Limitador suave para que los acordes grandes no saturen.
+            // Limitador suave (continuo) para que los acordes grandes no saturen.
             const float x = d[s] * g;
-            d[s] = std::abs (x) < 0.8f ? x : std::tanh (x);
+            const float ax = std::abs (x);
+            d[s] = ax < 0.8f ? x : std::copysign (0.8f + 0.2f * std::tanh ((ax - 0.8f) / 0.2f), x);
         }
     }
 }
@@ -224,7 +249,7 @@ void MidiSkyProcessor::setStateInformation (const void* data, int size)
         auto tree = juce::ValueTree::fromXml (*xml);
         if (tree.hasType (apvts.state.getType()))
         {
-            editorW.store ((int) tree.getProperty ("editorW", 1180));
+            editorW.store ((int) tree.getProperty ("editorW", 1200));
             editorH.store ((int) tree.getProperty ("editorH", 760));
             apvts.replaceState (tree);
         }

@@ -3,7 +3,7 @@
 #include "Views.h"
 
 //==============================================================================
-// Una sección de MidiSky. Puede vivir dentro de la ventana principal o en su propia ventana.
+// Una sección de Midi Cat. Puede vivir dentro de la ventana principal o en su propia ventana.
 class Section : public juce::Component
 {
 public:
@@ -18,19 +18,61 @@ public:
     void paint (juce::Graphics&) override;
     void resized() override;
     void refreshControls();             // mostrar u ocultar controles según el estado
-
     bool transparentMode() const { return floating && ctx.vis.transparent; }
 
 protected:
-    enum class PanelKind { atril, fall, keys };
-    virtual PanelKind panelKind() const = 0;
     virtual void paintContent (juce::Graphics&, juce::Rectangle<float> area) = 0;
     virtual void layoutContent (juce::Rectangle<int>) {}
-    juce::Rectangle<float> contentArea() const;
-    void caption (juce::Graphics&, juce::Rectangle<float>& area, const juce::String& text);
+    virtual bool wantsDetachButton() const { return true; }
+    void caption (juce::Graphics&, juce::Rectangle<float> area, const juce::String& text, juce::Colour colour);
 
     UiContext& ctx;
-    IconButton detachBtn;
+    PushButton detachBtn;
+};
+
+//==============================================================================
+class ScoreSection : public Section
+{
+public:
+    explicit ScoreSection (UiContext& c);
+
+protected:
+    void paintContent (juce::Graphics&, juce::Rectangle<float>) override;
+};
+
+//==============================================================================
+// La pantalla del centro: acorde grande, grado y notas
+class ScreenSection : public Section
+{
+public:
+    explicit ScreenSection (UiContext& c);
+
+protected:
+    void paintContent (juce::Graphics&, juce::Rectangle<float>) override;
+};
+
+//==============================================================================
+// Los grados (acordes de la tonalidad) debajo de la pantalla
+class DegreesSection : public Section, private Animated
+{
+public:
+    explicit DegreesSection (UiContext& c);
+    std::function<void (int)> onPreview;
+    void mouseDown (const juce::MouseEvent&) override;
+    void mouseUp (const juce::MouseEvent&) override;
+    void mouseMove (const juce::MouseEvent&) override;
+    void mouseExit (const juce::MouseEvent&) override;
+
+protected:
+    void paintContent (juce::Graphics&, juce::Rectangle<float>) override;
+    bool wantsDetachButton() const override { return false; }
+
+private:
+    bool stepAnimation (float dt) override;
+    juce::Rectangle<float> tile (int i) const;
+    juce::Rectangle<float> listArea;
+    int hover = -1, pressed = -1;
+    std::array<float, 7> press {};
 };
 
 //==============================================================================
@@ -42,63 +84,24 @@ public:
     void mouseDown (const juce::MouseEvent&) override;
     void mouseMove (const juce::MouseEvent&) override;
     void mouseExit (const juce::MouseEvent&) override;
+    bool isAnimating() const { return animating; }
 
 protected:
-    PanelKind panelKind() const override { return PanelKind::atril; }
     void paintContent (juce::Graphics&, juce::Rectangle<float>) override;
 
 private:
     bool ringAt (juce::Point<float>, int& index, bool& minor) const;
+    void buildLoop (const std::vector<int>& idx, float rn, float knobR, std::vector<juce::Point<float>>& out) const;
     juce::Point<float> centre;
     float radius = 100.0f;
     int hoverIndex = -1;
     bool hoverMinor = false;
-};
 
-//==============================================================================
-class ScoreSection : public Section
-{
-public:
-    explicit ScoreSection (UiContext& c);
-
-protected:
-    PanelKind panelKind() const override { return PanelKind::atril; }
-    void paintContent (juce::Graphics&, juce::Rectangle<float>) override;
-
-private:
-    juce::Image paperCache;      // papel y su sombra, ya dibujados
-    juce::String paperKey;
-};
-
-//==============================================================================
-class TabletsSection : public Section
-{
-public:
-    explicit TabletsSection (UiContext& c);
-    std::function<void (int)> onPreview;
-    void mouseDown (const juce::MouseEvent&) override;
-    void mouseMove (const juce::MouseEvent&) override;
-    void mouseExit (const juce::MouseEvent&) override;
-
-protected:
-    PanelKind panelKind() const override { return PanelKind::atril; }
-    void paintContent (juce::Graphics&, juce::Rectangle<float>) override;
-
-private:
-    juce::Rectangle<float> tablet (int i) const;
-    juce::Rectangle<float> listArea;
-    int hover = -1;
-};
-
-//==============================================================================
-class ChordSection : public Section
-{
-public:
-    explicit ChordSection (UiContext& c);
-
-protected:
-    PanelKind panelKind() const override { return PanelKind::fall; }
-    void paintContent (juce::Graphics&, juce::Rectangle<float>) override;
+    // Animación de la constelación
+    uint16_t shownMask = 0;
+    double changedAt = -10.0, releasedAt = -10.0;
+    std::vector<juce::Point<float>> lastLoop;
+    bool animating = false;
 };
 
 //==============================================================================
@@ -109,25 +112,31 @@ public:
 
     Switch pianoSw, scaleSw;
     Knob volume;
-    Segmented names;
+    FieldButton soundBtn;
+    PushButton pedalBtn, keysColourBtn, uiColourBtn, leftBtn, rightBtn, oct2, oct3, oct4;
     std::function<void (int note, float velocity, bool on)> onNote;
+    std::function<void (int direction)> onShift;
+    std::function<void (int octaves)> onOctaves;
+
+    void setRange (int startC, int octaves);
+    int firstNote() const { return startC; }
+    int lastNote() const { return startC + 12 * octaves; }
 
     void mouseDown (const juce::MouseEvent&) override;
     void mouseDrag (const juce::MouseEvent&) override;
     void mouseUp (const juce::MouseEvent&) override;
 
-    static constexpr int lowNote = 21, highNote = 108;
-
 protected:
-    PanelKind panelKind() const override { return PanelKind::keys; }
     void paintContent (juce::Graphics&, juce::Rectangle<float>) override;
     void layoutContent (juce::Rectangle<int>) override;
 
 private:
-    bool showCheeks() const;
     struct KeyGeom { juce::Rectangle<float> r; bool black; };
     KeyGeom keyRect (int note) const;
     int noteAt (juce::Point<float>, float& velocity) const;
-    juce::Rectangle<float> keysArea, leftCheek, rightCheek;
+    bool showCheeks() const;
+    void drawKey (juce::Graphics&, int note, const KeyGeom&) const;
+    juce::Rectangle<float> keysArea, leftCheek, rightCheek, rangeDisplay;
+    int startC = 48, octaves = 3;
     int mouseNote = -1;
 };

@@ -1,41 +1,55 @@
-MidiSky para Windows
-====================
+Midi Cat para Windows
+=====================
 
-Lo más fácil: usa el instalador (MidiSky-Instalador-Windows.exe).
+(Antes se llamaba MidiSky. El instalador quita la versión vieja solito.)
+
+Lo más fácil: usa el instalador (Midi-Cat-Instalador-Windows.exe).
 Ábrelo, dale "Siguiente" y listo. Pone el plugin donde Ableton lo busca solo.
 Lo de abajo es solo si prefieres copiarlo a mano.
 
 Qué hay en esta carpeta
 -----------------------
-- MidiSky.exe   -> la app sola (no necesita Ableton)
-- MidiSky.vst3  -> el plugin VST3 (es una carpeta, cópiala completa)
+- Midi Cat.exe   -> la app sola (no necesita Ableton)
+- Midi Cat.vst3  -> el plugin VST3 (es una carpeta, cópiala completa)
 
 Instalar el plugin para Ableton Live
 ------------------------------------
-1. Copia la carpeta MidiSky.vst3 completa a:
+1. Copia la carpeta Midi Cat.vst3 completa a:
       C:\Program Files\Common Files\VST3
    (Windows te va a pedir permiso de administrador: dale "Continuar".)
+   Si ahí sigue la carpeta vieja MidiSky.vst3, bórrala.
 2. En Ableton: Opciones > Preferencias > Plug-Ins > activa
    "Usar carpeta del sistema VST3" y dale "Reescanear".
-3. MidiSky aparece en el navegador de Ableton, en Plug-Ins > Joey Ocn.
+3. Midi Cat aparece en el navegador de Ableton, en Plug-Ins > Joey Ocn.
 
-La app sola (MidiSky.exe)
--------------------------
+La app sola (Midi Cat.exe)
+--------------------------
 - La primera vez, Windows puede mostrar "Windows protegió tu PC".
   Dale "Más información" > "Ejecutar de todas formas". Es normal en apps nuevas.
 - Arriba en "MIDI" eliges tu teclado o lo desconectas.
 - Ojo: en Windows un teclado MIDI solo lo puede usar un programa a la vez.
-  Si Ableton está abierto usando tu piano, usa MidiSky como plugin dentro de Ableton
+  Si Ableton está abierto usando tu piano, usa Midi Cat como plugin dentro de Ableton
   (así no se pelean por el teclado).
 
-Cómo usarlo en Ableton
-----------------------
-- Solo para ver y escuchar: arrastra MidiSky a una pista MIDI, ármala y toca.
-  Trae su propio piano (lo puedes apagar con "Sonido de piano").
+Cómo usarlo
+-----------
+- Solo para ver y escuchar: arrastra Midi Cat a una pista MIDI, ármala y toca.
+- "Sonido" (abajo a la izquierda): elige el piano. Hay piano de cola, de concierto,
+  suave, de bar, eléctrico (con y sin trémolo), celesta, de juguete y clavecín.
+  El switch "Piano" lo apaga si solo quieres ver.
+- "Pedal" (abajo a la derecha): sostiene las notas como el pedal de un piano,
+  sin pedal físico. Tócalo otra vez para soltarlo.
+- "Teclas" e "Interfaz" (junto al teclado): cambia la forma y el color de las
+  teclas y el color de toda la ventana. Los paneles se cierran con la X,
+  con Esc o con un clic afuera.
 - Para ver lo que tocas con OTRO instrumento: crea un Instrument Rack,
-  pon tu instrumento en una cadena y MidiSky en otra. Apaga el piano de MidiSky.
-- "MIDI" arriba: clic para pausar o reanudar lo que MidiSky escucha de Ableton.
+  pon tu instrumento en una cadena y Midi Cat en otra, y apaga su piano.
+- "MIDI" arriba: clic para pausar o reanudar lo que Midi Cat escucha de Ableton.
   No desconecta nada en Ableton.
 
-Créditos: piano Salamander Grand Piano de Alexander Holm (CC BY 3.0),
-fuente Bravura (SIL OFL), tipografía Outfit (SIL OFL), hecho con JUCE (AGPLv3).
+Créditos: piano de cola Salamander Grand Piano de Alexander Holm (CC BY 3.0);
+piano de concierto Splendid Grand Piano (muestras de dominio público de Akai);
+piano eléctrico jRhodes3d de Jeff Learman (CC BY 4.0,
+https://github.com/sfzinstruments/jlearman.jRhodes3d); notación con la fuente
+Bravura (SIL OFL); tipografías Zen Kaku Gothic New y Jersey 10 (SIL OFL);
+hecho con JUCE (AGPLv3).

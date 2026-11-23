@@ -1,0 +1,3 @@
+Splendid Grand Piano (Steinway), muestras de dominio público publicadas por Akai.
+Versión SFZ de sfzinstruments: https://github.com/sfzinstruments/SplendidGrandPiano
+En Midi Cat se usan dos capas (MP y FF), recortadas y convertidas a OGG.

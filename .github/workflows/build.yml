@@ -1,4 +1,4 @@
-name: Compilar MidiSky
+name: Compilar Midi Cat
 
 on:
   push:
@@ -25,57 +25,59 @@ jobs:
 
       - name: Firmar (ad-hoc)
         run: |
-          ART=build/MidiSky_artefacts/Release
-          codesign --force --deep --sign - "$ART/VST3/MidiSky.vst3"
-          codesign --force --deep --sign - "$ART/AU/MidiSky.component"
-          codesign --force --deep --sign - "$ART/Standalone/MidiSky.app"
-          lipo -info "$ART/VST3/MidiSky.vst3/Contents/MacOS/MidiSky"
+          ART=build/MidiCat_artefacts/Release
+          ls -la "$ART" "$ART/VST3" "$ART/AU" "$ART/Standalone"
+          codesign --force --deep --sign - "$ART/VST3/Midi Cat.vst3"
+          codesign --force --deep --sign - "$ART/AU/Midi Cat.component"
+          codesign --force --deep --sign - "$ART/Standalone/Midi Cat.app"
+          lipo -info "$ART/VST3/Midi Cat.vst3/Contents/MacOS/Midi Cat"
 
       - name: Probar con pluginval
         run: |
           curl -sSL -o pluginval.zip https://github.com/Tracktion/pluginval/releases/latest/download/pluginval_macOS.zip
           unzip -q pluginval.zip
           ./pluginval.app/Contents/MacOS/pluginval --strictness-level 5 --skip-gui-tests --validate-in-process \
-            --timeout-ms 300000 --validate build/MidiSky_artefacts/Release/VST3/MidiSky.vst3
+            --timeout-ms 300000 --validate "build/MidiCat_artefacts/Release/VST3/Midi Cat.vst3"
 
       - name: Probar Audio Unit (auval)
         run: |
           mkdir -p ~/Library/Audio/Plug-Ins/Components
-          cp -R build/MidiSky_artefacts/Release/AU/MidiSky.component ~/Library/Audio/Plug-Ins/Components/
+          cp -R "build/MidiCat_artefacts/Release/AU/Midi Cat.component" ~/Library/Audio/Plug-Ins/Components/
           killall -9 AudioComponentRegistrar || true
           sleep 2
           auval -v aumu Msky Jocn
 
       - name: Empaquetar
         run: |
-          ART=build/MidiSky_artefacts/Release
-          mkdir -p dist/MidiSky-Mac
-          cp -R "$ART/VST3/MidiSky.vst3" "$ART/AU/MidiSky.component" "$ART/Standalone/MidiSky.app" dist/MidiSky-Mac/
-          cp packaging/LEEME-Mac.txt dist/MidiSky-Mac/LEEME.txt
-          cd dist && ditto -c -k --sequesterRsrc --keepParent MidiSky-Mac MidiSky-Mac.zip
+          ART=build/MidiCat_artefacts/Release
+          mkdir -p dist/Midi-Cat-Mac
+          cp -R "$ART/VST3/Midi Cat.vst3" "$ART/AU/Midi Cat.component" "$ART/Standalone/Midi Cat.app" dist/Midi-Cat-Mac/
+          cp packaging/LEEME-Mac.txt dist/Midi-Cat-Mac/LEEME.txt
+          cd dist && ditto -c -k --sequesterRsrc --keepParent Midi-Cat-Mac Midi-Cat-Mac.zip
 
       - name: Crear el instalador (.pkg)
         run: |
-          ART=build/MidiSky_artefacts/Release
+          ART=build/MidiCat_artefacts/Release
           ROOT=pkgroot
           mkdir -p "$ROOT/Library/Audio/Plug-Ins/VST3" "$ROOT/Library/Audio/Plug-Ins/Components" "$ROOT/Applications"
-          cp -R "$ART/VST3/MidiSky.vst3" "$ROOT/Library/Audio/Plug-Ins/VST3/"
-          cp -R "$ART/AU/MidiSky.component" "$ROOT/Library/Audio/Plug-Ins/Components/"
-          cp -R "$ART/Standalone/MidiSky.app" "$ROOT/Applications/"
+          cp -R "$ART/VST3/Midi Cat.vst3" "$ROOT/Library/Audio/Plug-Ins/VST3/"
+          cp -R "$ART/AU/Midi Cat.component" "$ROOT/Library/Audio/Plug-Ins/Components/"
+          cp -R "$ART/Standalone/Midi Cat.app" "$ROOT/Applications/"
+          chmod +x packaging/mac/scripts/preinstall
           pkgbuild --analyze --root "$ROOT" comp.plist
           plutil -convert xml1 comp.plist
           sed -i '' -e '/<key>BundleIsRelocatable<\/key>/{n;s/<true\/>/<false\/>/;}' comp.plist
           grep -A1 BundleIsRelocatable comp.plist || true
-          pkgbuild --root "$ROOT" --component-plist comp.plist --identifier com.joeyocn.midisky \
-            --version 1.2.0 --install-location / dist/MidiSky-Instalador-Mac.pkg
+          pkgbuild --root "$ROOT" --component-plist comp.plist --scripts packaging/mac/scripts \
+            --identifier com.joeyocn.midicat --version 1.3.0 --install-location / dist/Midi-Cat-Instalador-Mac.pkg
           ls -la dist
 
       - uses: actions/upload-artifact@v4
         with:
-          name: MidiSky-Mac
+          name: Midi-Cat-Mac
           path: |
-            dist/MidiSky-Mac.zip
-            dist/MidiSky-Instalador-Mac.pkg
+            dist/Midi-Cat-Mac.zip
+            dist/Midi-Cat-Instalador-Mac.pkg
 
   windows:
     name: Windows (VST3 y app)
@@ -93,35 +95,36 @@ jobs:
       - name: Probar con pluginval
         shell: pwsh
         run: |
+          Get-ChildItem -Recurse -Depth 1 build\MidiCat_artefacts\Release
           Invoke-WebRequest -Uri https://github.com/Tracktion/pluginval/releases/latest/download/pluginval_Windows.zip -OutFile pluginval.zip
           Expand-Archive pluginval.zip -DestinationPath pluginval
-          $p = Start-Process -FilePath .\pluginval\pluginval.exe -ArgumentList '--strictness-level','5','--skip-gui-tests','--validate-in-process','--timeout-ms','300000','--validate','build\MidiSky_artefacts\Release\VST3\MidiSky.vst3' -NoNewWindow -Wait -PassThru
+          $p = Start-Process -FilePath .\pluginval\pluginval.exe -ArgumentList '--strictness-level','5','--skip-gui-tests','--validate-in-process','--timeout-ms','300000','--validate','"build\MidiCat_artefacts\Release\VST3\Midi Cat.vst3"' -NoNewWindow -Wait -PassThru
           if ($p.ExitCode -ne 0) { exit $p.ExitCode }
 
       - name: Empaquetar
         shell: pwsh
         run: |
-          $art = "build\MidiSky_artefacts\Release"
-          New-Item -ItemType Directory -Force -Path dist\MidiSky-Windows | Out-Null
-          Copy-Item -Recurse "$art\VST3\MidiSky.vst3" dist\MidiSky-Windows\
-          Copy-Item "$art\Standalone\MidiSky.exe" dist\MidiSky-Windows\
-          Copy-Item packaging\LEEME-Windows.txt dist\MidiSky-Windows\LEEME.txt
-          Compress-Archive -Path dist\MidiSky-Windows -DestinationPath dist\MidiSky-Windows.zip
+          $art = "build\MidiCat_artefacts\Release"
+          New-Item -ItemType Directory -Force -Path dist\Midi-Cat-Windows | Out-Null
+          Copy-Item -Recurse "$art\VST3\Midi Cat.vst3" dist\Midi-Cat-Windows\
+          Copy-Item "$art\Standalone\Midi Cat.exe" dist\Midi-Cat-Windows\
+          Copy-Item packaging\LEEME-Windows.txt dist\Midi-Cat-Windows\LEEME.txt
+          Compress-Archive -Path dist\Midi-Cat-Windows -DestinationPath dist\Midi-Cat-Windows.zip
 
       - name: Crear el instalador
         shell: pwsh
         run: |
           choco install innosetup --no-progress -y
-          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" packaging\windows\MidiSky.iss
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" packaging\windows\MidiCat.iss
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           Get-ChildItem dist
 
       - uses: actions/upload-artifact@v4
         with:
-          name: MidiSky-Windows
+          name: Midi-Cat-Windows
           path: |
-            dist/MidiSky-Windows.zip
-            dist/MidiSky-Instalador-Windows.exe
+            dist/Midi-Cat-Windows.zip
+            dist/Midi-Cat-Instalador-Windows.exe
 
   publicar:
     name: Publicar descargas
@@ -140,7 +143,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release delete ultima-version --yes --cleanup-tag -R "${{ github.repository }}" || true
-          gh release create ultima-version dist/MidiSky-Instalador-Windows.exe dist/MidiSky-Instalador-Mac.pkg dist/MidiSky-Mac.zip dist/MidiSky-Windows.zip \
+          gh release create ultima-version dist/Midi-Cat-Instalador-Windows.exe dist/Midi-Cat-Instalador-Mac.pkg dist/Midi-Cat-Mac.zip dist/Midi-Cat-Windows.zip \
             -R "${{ github.repository }}" --target "${{ github.sha }}" \
-            --title "MidiSky · última versión" \
-            --notes "Lo más fácil: descarga el instalador. Windows: MidiSky-Instalador-Windows.exe. Mac: MidiSky-Instalador-Mac.pkg. Ábrelo, dale Siguiente y listo; al abrir Ableton, MidiSky ya aparece en tus plugins. Los .zip son la versión para copiar a mano."
+            --title "Midi Cat · última versión" \
+            --notes "Lo más fácil: descarga el instalador. Windows: Midi-Cat-Instalador-Windows.exe. Mac: Midi-Cat-Instalador-Mac.pkg. Ábrelo, dale Siguiente y listo; al abrir Ableton, Midi Cat ya aparece en tus plugins (y quita solo la versión vieja que se llamaba MidiSky). Los .zip son la versión para copiar a mano."

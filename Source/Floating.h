@@ -3,7 +3,8 @@
 #include "Sections.h"
 
 //==============================================================================
-// El marco de una sección separada: barra para moverla y botones (unir, tamaño normal, siempre encima).
+// El marco de una sección separada: barra para moverla y botones
+// (minimizar, unir, restablecer todo, tamaño normal, siempre encima).
 class FloatingShell : public juce::Component, private juce::Timer
 {
 public:
@@ -15,34 +16,32 @@ public:
     void resized() override;
     void mouseDown (const juce::MouseEvent&) override;
     void mouseDrag (const juce::MouseEvent&) override;
+    void mouseDoubleClick (const juce::MouseEvent&) override;
     void setPinned (bool p) { pinBtn.setActive (p); }
+    void setCollapsed (bool c);
+    bool isCollapsed() const { return collapsed; }
     void releaseSection();
 
     Section& section;
-    IconButton dockBtn, restoreAllBtn, resetBtn, pinBtn;
-    std::function<void()> onDock, onRestoreAll, onReset, onTogglePin;
+    PushButton minBtn, dockBtn, restoreAllBtn, resetBtn, pinBtn;
+    std::function<void()> onMinimize, onDock, onRestoreAll, onReset, onTogglePin;
 
-    static constexpr int headerHeight = 34;
-    static constexpr int margin = 8;
+    static constexpr int headerHeight = 40;
+    static constexpr int margin = 10;
     static juce::Point<int> windowSizeFor (const Section& s) { return { s.natural.x + margin * 2, s.natural.y + headerHeight + margin }; }
 
 private:
     void timerCallback() override;
     bool transparent() const { return ctx.vis.transparent; }
-    juce::Rectangle<int> header() const
-    {
-        return transparent() ? getLocalBounds().removeFromTop (28)
-                             : getLocalBounds().reduced (margin, 0).withTrimmedTop (4).removeFromTop (headerHeight - 6);
-    }
+    juce::Rectangle<int> header() const;
     float scaleFactor() const;
 
     UiContext& ctx;
     juce::ComponentDragger dragger;
     juce::Image background;
     juce::String backgroundKey;
-    ThemeCache themeCache;
     float headerAlpha = 1.0f;
-    bool released = false;
+    bool released = false, collapsed = false;
 };
 
 //==============================================================================
@@ -60,10 +59,13 @@ public:
 
     void releaseSection();
     FloatingShell& shell() { return *shellPtr; }
+    void setCollapsed (bool c);
 
     std::function<void (juce::Rectangle<int>)> onBoundsChanged;
 
 private:
     bool isTransparent;
     FloatingShell* shellPtr = nullptr;
+    int fullHeight = 0;
+    bool collapsing = false;
 };
