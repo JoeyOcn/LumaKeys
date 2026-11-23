@@ -3,8 +3,9 @@
 #include "Pieces.h"
 
 //==============================================================================
-// Personalizar: todo en un solo lugar (estilo, teclas, pantalla, grados, círculo,
-// pentagrama, formas y movimiento). Cada cambio se ve al instante.
+// Personalizar. El panel general tiene el estilo, los temas y el movimiento;
+// cada pieza (pantalla, grados, círculo, pentagrama, teclas) tiene su botoncito
+// para ajustar solo esa pieza. Cada cambio se ve al instante.
 //==============================================================================
 
 // Lo que cambia de alto según el ancho (para acomodarse en la lista)
@@ -98,7 +99,7 @@ public:
 
 private:
     void fromHSV (bool notify);
-    void syncFields();
+    void syncFields (bool fromHex = false);
     juce::Rectangle<float> swatchRect (int i) const;
     UiContext& ctx;
     juce::Colour current, original;
@@ -178,24 +179,68 @@ private:
     int selected = 0, hover = -1;
 };
 
+// Lo que el panel le pide al editor
+struct PanelHooks
+{
+    std::function<void()> openDegreeInput;                              // teclas y pads de los grados
+    std::function<ThemePreset (const juce::String& name)> captureTheme; // todo, con el acomodo de las ventanas
+    std::function<void (const ThemePreset&)> applyTheme;                // todo, con el acomodo de las ventanas
+};
+
+// Pestañas arriba (pocas y cortas)
+class TopTabs : public juce::Component
+{
+public:
+    TopTabs (UiContext& c, juce::StringArray n) : ctx (c), names (std::move (n)) {}
+    std::function<void (int)> onChange;
+    void setSelected (int i) { selected = i; repaint(); }
+    int getSelected() const { return selected; }
+    void paint (juce::Graphics&) override;
+    void mouseMove (const juce::MouseEvent&) override;
+    void mouseExit (const juce::MouseEvent&) override { hover = -1; repaint(); }
+    void mouseUp (const juce::MouseEvent&) override;
+
+private:
+    juce::Rectangle<float> item (int i) const;
+    UiContext& ctx;
+    juce::StringArray names;
+    int selected = 0, hover = -1;
+};
+
+// Panel general: estilo, temas y movimiento
 class CustomizePanel : public juce::Component
 {
 public:
-    CustomizePanel (UiContext& c, Prefs& p, std::function<void()> openDegreeInput);
+    CustomizePanel (UiContext& c, Prefs& p, PanelHooks hooks);
     void resized() override;
     void paint (juce::Graphics&) override;
-    std::function<void (int tab)> onTab;   // para acomodar el panel sin tapar la pieza que editas
-    int currentTab() const { return tabs.getSelected(); }
     static juce::StringArray tabNames();
     static void setStartTab (int t);
 
 private:
     void showTab (int i);
-    void build (int i);
     UiContext& ctx;
     Prefs& prefs;
-    std::function<void()> openDegrees;
-    SideTabs tabs;
+    PanelHooks hooks;
+    TopTabs tabs;
+    std::unique_ptr<juce::Component> page;
+};
+
+// Panel de una sola pieza (se abre con su botoncito)
+class PiecePanel : public juce::Component
+{
+public:
+    enum Piece { screenPiece = 0, degreesPiece, circlePiece, staffPiece, keysPiece };
+    PiecePanel (UiContext& c, Prefs& p, int piece, PanelHooks hooks);
+    static juce::String titleFor (int piece);
+    void resized() override;
+    void rebuild();
+
+private:
+    UiContext& ctx;
+    Prefs& prefs;
+    const int piece;
+    PanelHooks hooks;
     std::unique_ptr<juce::Component> page;
 };
 

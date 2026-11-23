@@ -22,6 +22,7 @@ public:
     std::function<void()> onSaved;
     std::function<void (const juce::File&)> onConvertToAudio;
     std::function<float()> audioProgress;   // 0..1 mientras se pasa a audio este archivo; -1 si no
+    std::function<void (bool accent)> onMetroClick;   // un clic del metrónomo (lo toca el procesador)
     void setStatus (const juce::String& s) { status = s; repaint (0, 0, getWidth(), 64); }
 
     void paint (juce::Graphics&) override;
@@ -143,11 +144,22 @@ private:
 
     juce::String status;
     juce::Font noteFont, smallFont, rulerFont;
-    PushButton drawBtn, gridBtn, quantBtn, splitBtn, dupBtn, undoBtn, redoBtn, playBtn;
+    PushButton drawBtn, gridBtn, quantBtn, splitBtn, dupBtn, undoBtn, redoBtn, playBtn, metroBtn;
+    static inline bool metroOn = true;     // metrónomo al reproducir (se queda para la próxima vez)
+    double nextClickBeat = 0.0;
     class DragOut;
     std::unique_ptr<DragOut> dragOut, audioOut;
     int audioState = -2, audioTick = 0;   // para repintar el chip de audio solo cuando cambia
-    juce::ScrollBar hbar { false }, vbar { true };
+    // Las barras usan el mismo sentido que el resto del piano roll (siguen a los dedos)
+    struct WheelBar : juce::ScrollBar
+    {
+        using juce::ScrollBar::ScrollBar;
+        void mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWheelDetails& w) override
+        {
+            if (auto* p = getParentComponent()) p->mouseWheelMove (e.getEventRelativeTo (p), w);
+        }
+    };
+    WheelBar hbar { false }, vbar { true };
 };
 
 //==============================================================================

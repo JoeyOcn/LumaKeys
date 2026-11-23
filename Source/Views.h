@@ -44,6 +44,7 @@ struct Vis
     bool sevenths = false;
     bool hideParams = false;
     bool transparent = false;
+    float uiScale = 1.0f;                // escala de la interfaz (para que los paneles crezcan y se encojan con ella)
     Skin pal;
 };
 
@@ -267,18 +268,32 @@ public:
     std::function<void()> onClose;
     juce::String anchorId;
     float dimAmount = 1.0f;   // qué tanto se oscurece lo de atrás (0 = nada, para ver los cambios en vivo)
-    void setAvoid (juce::Rectangle<int> r) { avoid = r; userOffset = {}; resized(); repaint(); }
+    void setAvoid (juce::Rectangle<int> r) { avoid = r; pinned = false; resized(); repaint(); }
+
+    // Tamaño: sigue la escala del plugin y además lo ajustas arrastrando la esquina
+    float zoom = 1.0f;
+    std::function<void (float)> onZoom;
+    // Vidrio esmerilado: el editor dibuja lo que hay detrás del panel
+    std::function<juce::Image (juce::Rectangle<int>, float)> backdrop;
+    void refreshGlass();
+    juce::Rectangle<int> panelBounds() const { return panel; }
 
 private:
     void requestClose();
+    float currentScale() const;
+    juce::Rectangle<int> gripArea() const;
     juce::Rectangle<int> avoid;
-    juce::Point<int> userOffset, dragStartOffset;
-    bool draggingPanel = false;
+    bool pinned = false;                     // lo moviste tú: se queda donde lo dejaste
+    juce::Point<int> pinPos, dragStartPos;
+    int dragMode = 0;                        // 1 mover, 2 cambiar tamaño
+    float zoomStart = 1.0f;
+    int panelWStart = 1;
     UiContext& ctx;
     juce::String title;
     std::unique_ptr<juce::Component> content;
     juce::Rectangle<int> anchor;
     juce::Rectangle<int> panel;
+    juce::Image glass;
     PushButton closeBtn;
 };
 

@@ -362,7 +362,7 @@ Colour Skin::noteColour (int midiNote) const
         // Arcoíris ordenado por quintas: los acordes consonantes quedan en colores vecinos
         const int pc = ((midiNote % 12) + 12) % 12;
         const float pos = (float) ((pc * 7) % 12) / 12.0f;
-        return Colour::fromHSV (pos, 0.66f, 1.0f, 1.0f);
+        return soften (Colour::fromHSV (pos, 0.66f, 1.0f, 1.0f));
     }
     return lit;
 }
@@ -371,7 +371,40 @@ Colour Skin::noteTag (int index) const
 {
     if (pixelScreen) return scrText;
     static const Colour cols[5] = { Colour (0xffff5a1f), Colour (0xff2e6bff), Colour (0xff18c27a), Colour (0xffffd400), Colour (0xffff3d7f) };
-    return cols[((index % 5) + 5) % 5];
+    return soften (cols[((index % 5) + 5) % 5]);
+}
+
+Colour Skin::soften (Colour c) const
+{
+    if (soft <= 0.001f || c.isTransparent()) return c;
+    // Menos saturado y los claros un poco menos brillantes: descansa la vista
+    float b = c.getBrightness();
+    if (b > 0.8f) b -= (b - 0.8f) * 0.55f * soft;
+    return Colour::fromHSV (c.getHue(), c.getSaturation() * (1.0f - 0.7f * soft), b, c.getFloatAlpha());
+}
+
+Skin windowSkin (const Skin& s)
+{
+    Skin w = s;
+    if (s.night) return w;
+    // De día, los botones y pantallas oscuras de las ventanas se vuelven claros
+    if (w.btn.getPerceivedBrightness() < 0.5f)
+    {
+        w.btn = s.card.interpolatedWith (s.body1, 0.25f);
+        w.btnEdge = s.body2.darker (0.15f);
+        w.btnText = s.text;
+        w.btnShadow = Colours::black.withAlpha (0.13f);
+    }
+    if (w.screen.getPerceivedBrightness() < 0.4f)
+    {
+        w.screen = s.plate.interpolatedWith (s.card, 0.35f);
+        const auto t = s.scrText;
+        w.scrText = t.getSaturation() > 0.35f ? t.withMultipliedBrightness (0.86f) : s.text;
+        w.scrDim = s.dim;
+    }
+    for (auto& c : w.caps)
+        if (c.getPerceivedBrightness() < 0.3f) c = s.body2.darker (0.25f);
+    return w;
 }
 
 //==============================================================================
@@ -392,6 +425,8 @@ StringArray frameShapeNames()    { return { "Redondeado", "Recto", "Muy redondo"
 StringArray plateShapeNames()    { return { "Redondeada", "Recta", "Muy redonda", "Sin placa" }; }
 StringArray buttonShapeNames()   { return { "Redondeados", U8 ("Círculos"), "Cuadrados" }; }
 StringArray keyMotionNames()     { return { "Suave", "Al instante", "Con estela" }; }
+StringArray screenIdleNames()    { return { U8 ("Vacía"), "Con la tonalidad" }; }
+StringArray degreeLabelNames()   { return { "Solo el grado", "Grado y acorde" }; }
 
 static Colour readColour (const XmlElement& e, const char* key)
 {
@@ -437,6 +472,8 @@ void PieceStyle::read (const XmlElement& e)
     keyMotion = jlimit (0, 2, e.getIntAttribute ("keyMotion", 0));
     cirFlow = e.getBoolAttribute ("cirFlow", true);
     panelMotion = e.getBoolAttribute ("panelMotion", true);
+    scrIdle = jlimit (0, 1, e.getIntAttribute ("scrIdle", 0));
+    degLabels = jlimit (0, 1, e.getIntAttribute ("degLabels", 0));
 }
 
 void PieceStyle::write (XmlElement& e) const
@@ -472,6 +509,8 @@ void PieceStyle::write (XmlElement& e) const
     e.setAttribute ("keyMotion", keyMotion);
     e.setAttribute ("cirFlow", cirFlow);
     e.setAttribute ("panelMotion", panelMotion);
+    e.setAttribute ("scrIdle", scrIdle);
+    e.setAttribute ("degLabels", degLabels);
 }
 
 String Prefs::keyName (int code)
@@ -527,6 +566,136 @@ static std::unique_ptr<XmlElement> writeFloats (const std::map<String, FloatStat
     return xml;
 }
 
+//==============================================================================
+// Temas
+//==============================================================================
+void ThemePreset::read (const XmlElement& e)
+{
+    name = e.getStringAttribute ("name");
+    look = e.getStringAttribute ("look", "campo");
+    dayNight = jlimit (-1, 2, e.getIntAttribute ("dayNight"));
+    keyStyle = jlimit (-1, 3, e.getIntAttribute ("keyStyle", -1));
+    uiTint = readColour (e, "uiTint"); uiAccent = readColour (e, "uiAccent");
+    keyLit = readColour (e, "keyLit"); keyWhite = readColour (e, "keyWhite"); keyBlack = readColour (e, "keyBlack");
+    uiTintExact = e.getBoolAttribute ("uiTintExact", false);
+    rainbow = e.getBoolAttribute ("rainbow");
+    soft = jlimit (0.0f, 1.0f, (float) e.getDoubleAttribute ("soft", 0.0));
+    if (auto* pe = e.getChildByName ("PIECES")) pieces.read (*pe);
+    hasExtras = e.hasAttribute ("latin");
+    latin = e.getBoolAttribute ("latin");
+    sevenths = e.getBoolAttribute ("sevenths");
+    octaves = jlimit (2, 4, e.getIntAttribute ("octaves", 3));
+    startC = jlimit (12, 108 - 12 * octaves, e.getIntAttribute ("startC", 48));
+    startC -= startC % 12;
+    hasLayout = false;
+    if (auto* le = e.getChildByName ("LAYOUT"))
+    {
+        hasLayout = true;
+        layout.transparent = le->getBoolAttribute ("transparent");
+        layout.hideParams = le->getBoolAttribute ("hideParams");
+        layout.editorW = le->getIntAttribute ("editorW");
+        layout.editorH = le->getIntAttribute ("editorH");
+        if (auto* fx = le->getChildByName ("FLOATS")) layout.floats = readFloats (*fx);
+    }
+}
+
+void ThemePreset::write (XmlElement& e) const
+{
+    e.setAttribute ("name", name);
+    e.setAttribute ("look", look);
+    e.setAttribute ("dayNight", dayNight);
+    e.setAttribute ("keyStyle", keyStyle);
+    writeColour (e, "uiTint", uiTint); writeColour (e, "uiAccent", uiAccent);
+    writeColour (e, "keyLit", keyLit); writeColour (e, "keyWhite", keyWhite); writeColour (e, "keyBlack", keyBlack);
+    e.setAttribute ("uiTintExact", uiTintExact);
+    e.setAttribute ("rainbow", rainbow);
+    e.setAttribute ("soft", (double) soft);
+    pieces.write (*e.createNewChildElement ("PIECES"));
+    if (hasExtras)
+    {
+        e.setAttribute ("latin", latin);
+        e.setAttribute ("sevenths", sevenths);
+        e.setAttribute ("octaves", octaves);
+        e.setAttribute ("startC", startC);
+    }
+    if (hasLayout)
+    {
+        auto* le = e.createNewChildElement ("LAYOUT");
+        le->setAttribute ("transparent", layout.transparent);
+        le->setAttribute ("hideParams", layout.hideParams);
+        le->setAttribute ("editorW", layout.editorW);
+        le->setAttribute ("editorH", layout.editorH);
+        le->addChildElement (writeFloats (layout.floats).release());
+    }
+}
+
+const std::vector<ThemePreset>& builtinThemes()
+{
+    // Solo combinaciones de lo que ya existe: estilos, paletas rápidas y los diseños de cada pieza
+    static const std::vector<ThemePreset> list = []
+    {
+        std::vector<ThemePreset> v;
+        auto add = [&v] (const char* group, const char* name, const char* look, int keys, std::function<void (PieceStyle&)> fn,
+                         Colour tint = {}, Colour accent = {}, float soft = 0.0f)
+        {
+            ThemePreset t;
+            t.group = U8 (group);
+            t.name = U8 (name);
+            t.look = look;
+            t.dayNight = -1;   // se queda tu día o noche
+            t.keyStyle = keys;
+            t.uiTint = tint;
+            t.uiAccent = accent;
+            t.soft = soft;
+            if (fn) fn (t.pieces);
+            v.push_back (t);
+        };
+        // Estudio
+        add ("Estudio", "MidiCat", "sampler", keysPastilla, [] (PieceStyle& p) { p.degShape = 3; });
+        add ("Estudio", "Campo", "campo", -1, nullptr);
+        add ("Estudio", "Cromo", "metal", keysClasica, [] (PieceStyle& p)
+             { p.scrSkin = 3; p.scrFont = 6; p.degSkin = 1; p.degShape = 2; p.cirSkin = 1; p.cirTexture = 3; p.stfShape = 1; });
+        add ("Estudio", "Grafito", "campo", keysPlana, [] (PieceStyle& p)
+             { p.scrSkin = 5; p.scrFont = 2; p.degSkin = 2; p.cirSkin = 1; p.stfSkin = 1; p.stfShape = 1; },
+             Colour (0xff2c3440), Colour (0xff4cc2ff));
+        // Retro
+        add ("Retro", "LCD verde", "campo", keysBotones, [] (PieceStyle& p)
+             { p.scrSkin = 1; p.scrFont = 4; p.scrTexture = 2; p.degSkin = 4; p.cirSkin = 1; p.stfSkin = 1; p.stfTexture = 4; });
+        add ("Retro", "Ámbar 80s", "ritmo", keysBotones, [] (PieceStyle& p)
+             { p.scrSkin = 2; p.scrFont = 5; p.scrGlow = 0.6f; p.scrMotion = 3; p.degSkin = 5; p.cirSkin = 3; p.cirTexture = 2; p.stfSkin = 2; p.stfTexture = 3; });
+        add ("Retro", "Arcade", "sampler", keysBotones, [] (PieceStyle& p)
+             { p.scrFont = 8; p.degSkin = 4; p.degShape = 1; p.cirSkin = 2; p.stfSkin = 5; p.btnShape = 2; p.scrShape = 1; },
+             Colour (0xff2a2d6a), Colour (0xffffd23f));
+        add ("Retro", "Vinilo", "metal", keysPastilla, [] (PieceStyle& p)
+             { p.scrSkin = 2; p.scrFont = 9; p.cirSkin = 3; p.cirTexture = 2; p.degSkin = 2; p.stfSkin = 1; p.stfTexture = 2; },
+             Colour (0xff2a1d14), Colour (0xffcfa65a));
+        // Neón
+        add ("Neón", "Neón", "neon", keysPastilla, [] (PieceStyle& p)
+             { p.scrSkin = 6; p.scrFont = 7; p.scrGlow = 0.8f; p.degSkin = 3; p.degShape = 2; p.cirSkin = 4; p.cirRoute = 2; p.stfSkin = 4; });
+        add ("Neón", "Synthwave", "cristal", keysPastilla, [] (PieceStyle& p)
+             { p.scrSkin = 6; p.scrFont = 6; p.scrGlow = 0.7f; p.degSkin = 3; p.cirSkin = 4; p.cirRoute = 3; p.stfSkin = 3; p.scrShape = 2; },
+             Colour (0xff3b1d5e), Colour (0xffff3d9a));
+        add ("Neón", "Wavetable", "neon", keysPlana, [] (PieceStyle& p)
+             { p.scrSkin = 3; p.scrFont = 6; p.scrGlow = 0.5f; p.degSkin = 4; p.cirSkin = 2; p.cirRoute = 1; p.stfSkin = 5; },
+             Colour (0xff3a3560), Colour (0xff3ee6c9));
+        add ("Neón", "Hielo", "cristal", keysPastilla, [] (PieceStyle& p)
+             { p.scrSkin = 3; p.scrFont = 2; p.degSkin = 1; p.degShape = 2; p.cirSkin = 2; p.stfSkin = 3; p.scrShape = 2; });
+        // Suaves (para que no canse la vista)
+        add ("Suaves", "Papel y tinta", "papel", keysPlana, [] (PieceStyle& p)
+             { p.scrSkin = 4; p.scrFont = 1; p.degSkin = 2; p.cirSkin = 1; p.stfSkin = 1; p.stfTexture = 4; p.stfShape = 1; });
+        add ("Suaves", "Pizarra", "campo", keysPastilla, [] (PieceStyle& p)
+             { p.scrSkin = 5; p.scrFont = 2; p.degSkin = 3; p.cirSkin = 1; p.stfSkin = 2; p.stfTexture = 3; }, {}, {}, 0.5f);
+        add ("Suaves", "Gris descanso", "campo", keysPlana, [] (PieceStyle& p)
+             { p.scrSkin = 5; p.degSkin = 2; p.cirSkin = 1; p.cirFlow = false; p.stfSkin = 1; },
+             Colour (0xff9aa3ad), Colour (0xff2f6bff), 0.8f);
+        add ("Suaves", "Laca", "campo", keysPastilla, [] (PieceStyle& p)
+             { p.scrSkin = 2; p.scrFont = 1; p.degSkin = 1; p.degShape = 3; p.cirSkin = 3; p.stfSkin = 1; },
+             Colour (0xff2a1d14), Colour (0xffcfa65a), 0.35f);
+        return v;
+    }();
+    return list;
+}
+
 Prefs::Prefs()
 {
     PropertiesFile::Options o;
@@ -544,11 +713,14 @@ Prefs::Prefs()
         return s.isEmpty() ? Colour() : Colour::fromString (s);
     };
 
-    look        = file->getValue ("look", "campo");
+    // La primera vez que se abre MidiCat: estilo Sampler de día, teclas pastilla y grados redondos
+    const bool fresh = ! file->containsKey ("look") && ! file->containsKey ("lightMode");
+    look        = file->getValue ("look", fresh ? "sampler" : "campo");
     if (lookIndex (look) == 0 && look != "campo") look = "campo";
     dayNight    = jlimit (0, 2, file->getIntValue ("dayNight", 0));
-    keyStyle    = jlimit (-1, 3, file->getIntValue ("keyStyle", -1));
-    octaves     = jlimit (2, 4, file->getIntValue ("octaves", 3));
+    keyStyle    = jlimit (-1, 3, file->getIntValue ("keyStyle", fresh ? (int) keysPastilla : -1));
+    if (fresh) pieces.degShape = 3;
+    octaves     = jlimit (2, 4, file->getIntValue ("octaves", fresh ? 2 : 3));
     startC      = jlimit (12, 108 - 12 * octaves, file->getIntValue ("startC", 48));
     startC      -= startC % 12;
     uiTint      = colourOf ("uiTint");
@@ -556,6 +728,8 @@ Prefs::Prefs()
     keyLit      = colourOf ("keyLit");
     keyWhite    = colourOf ("keyWhite");
     keyBlack    = colourOf ("keyBlack");
+    uiTintExact = file->getBoolValue ("uiTintExact", false);
+    soft        = jlimit (0.0f, 1.0f, (float) file->getDoubleValue ("soft", 0.0));
     rainbow     = file->getBoolValue ("rainbow", false);
     latin       = file->getBoolValue ("latin", false);
     sevenths    = file->getBoolValue ("sevenths", false);
@@ -601,17 +775,12 @@ Prefs::Prefs()
         for (auto* e : xml->getChildIterator())
         {
             ThemePreset t;
-            t.name = e->getStringAttribute ("name");
-            t.look = e->getStringAttribute ("look", "campo");
-            t.dayNight = jlimit (0, 2, e->getIntAttribute ("dayNight"));
-            t.keyStyle = jlimit (-1, 3, e->getIntAttribute ("keyStyle", -1));
-            auto col = [e] (const char* k) { const auto v = e->getStringAttribute (k); return v.isEmpty() ? Colour() : Colour::fromString (v); };
-            t.uiTint = col ("uiTint"); t.uiAccent = col ("uiAccent");
-            t.keyLit = col ("keyLit"); t.keyWhite = col ("keyWhite"); t.keyBlack = col ("keyBlack");
-            t.rainbow = e->getBoolAttribute ("rainbow");
-            if (auto* pe = e->getChildByName ("PIECES")) t.pieces.read (*pe);
+            t.read (*e);
             if (t.name.isNotEmpty()) themes.push_back (t);
         }
+    for (auto& tok : StringArray::fromTokens (file->getValue ("panelZoom", ""), ";", ""))
+        if (tok.contains ("="))
+            panelZoom[tok.upToFirstOccurrenceOf ("=", false, false)] = jlimit (0.5f, 1.6f, (float) tok.fromFirstOccurrenceOf ("=", false, false).getDoubleValue());
 
     if (auto xml = file->getXmlValue ("layouts"))
         for (auto* e : xml->getChildIterator())
@@ -632,20 +801,31 @@ ThemePreset Prefs::captureTheme (const String& name) const
     ThemePreset t;
     t.name = name;
     t.look = look; t.dayNight = dayNight; t.keyStyle = keyStyle;
-    t.uiTint = uiTint; t.uiAccent = uiAccent;
+    t.uiTint = uiTint; t.uiAccent = uiAccent; t.uiTintExact = uiTintExact;
     t.keyLit = keyLit; t.keyWhite = keyWhite; t.keyBlack = keyBlack;
     t.rainbow = rainbow;
+    t.soft = soft;
     t.pieces = pieces;
+    t.hasExtras = true;
+    t.latin = latin; t.sevenths = sevenths; t.octaves = octaves; t.startC = startC;
     return t;
 }
 
 void Prefs::applyTheme (const ThemePreset& t)
 {
-    look = t.look; dayNight = t.dayNight; keyStyle = t.keyStyle;
-    uiTint = t.uiTint; uiAccent = t.uiAccent;
+    look = t.look;
+    if (t.dayNight >= 0) dayNight = t.dayNight;
+    keyStyle = t.keyStyle;
+    uiTint = t.uiTint; uiAccent = t.uiAccent; uiTintExact = t.uiTintExact;
     keyLit = t.keyLit; keyWhite = t.keyWhite; keyBlack = t.keyBlack;
     rainbow = t.rainbow;
+    soft = t.soft;
     pieces = t.pieces;
+    if (t.hasExtras)
+    {
+        latin = t.latin; sevenths = t.sevenths;
+        octaves = t.octaves; startC = t.startC;
+    }
     save();
 }
 
@@ -668,6 +848,8 @@ void Prefs::save (bool notify)
     putColour ("keyLit", keyLit);
     putColour ("keyWhite", keyWhite);
     putColour ("keyBlack", keyBlack);
+    file->setValue ("uiTintExact", uiTintExact);
+    file->setValue ("soft", (double) soft);
     file->setValue ("rainbow", rainbow);
     file->setValue ("latin", latin);
     file->setValue ("sevenths", sevenths);
@@ -702,19 +884,13 @@ void Prefs::save (bool notify)
 
     XmlElement tx ("THEMES");
     for (auto& t : themes)
-    {
-        auto* e = tx.createNewChildElement ("T");
-        auto putC = [e] (const char* k, Colour c) { e->setAttribute (k, c.isTransparent() ? String() : c.toString()); };
-        e->setAttribute ("name", t.name);
-        e->setAttribute ("look", t.look);
-        e->setAttribute ("dayNight", t.dayNight);
-        e->setAttribute ("keyStyle", t.keyStyle);
-        putC ("uiTint", t.uiTint); putC ("uiAccent", t.uiAccent);
-        putC ("keyLit", t.keyLit); putC ("keyWhite", t.keyWhite); putC ("keyBlack", t.keyBlack);
-        e->setAttribute ("rainbow", t.rainbow);
-        t.pieces.write (*e->createNewChildElement ("PIECES"));
-    }
+        t.write (*tx.createNewChildElement ("T"));
     file->setValue ("themes", &tx);
+    {
+        StringArray z;
+        for (auto& [id, v] : panelZoom) z.add (id + "=" + String (v, 3));
+        file->setValue ("panelZoom", z.joinIntoString (";"));
+    }
 
     XmlElement lx ("LAYOUTS");
     for (auto& l : layouts)
@@ -748,22 +924,66 @@ int Prefs::effectiveKeyStyle() const
     return looks()[(size_t) lookIndex (look)].defaultKeys;
 }
 
-Skin Prefs::palette (const String& lookOverride) const
+// El cuerpo toma exactamente el color elegido; textos y botones se acomodan para leerse bien
+static void exactBody (Skin& s, int look, Colour t)
 {
-    const auto& lk = lookOverride.isNotEmpty() ? lookOverride : look;
-    Skin s = baseSkin (lookIndex (lk), isNight());
+    const bool dark = t.getPerceivedBrightness() < 0.45f;
+    const Skin src = baseSkin (look, dark);
+    const float b0 = src.body1.getBrightness();
+    auto rel = [&] (Colour c)
+    {
+        const float b = jlimit (0.0f, 1.0f, t.getBrightness() + (c.getBrightness() - b0));
+        return Colour::fromHSV (t.getHue(), t.getSaturation(), b, c.getFloatAlpha());
+    };
+    s.body1 = t;
+    s.body2 = rel (src.body2);
+    s.backdrop = rel (src.backdrop);
+    if (! src.flat) s.edge = rel (src.edge);
+    s.plate = rel (src.plate);
+    s.keyBed = rel (src.keyBed);
+    s.text = src.text;
+    s.dim = tinted (src.dim, t, 0.35f);
+    s.card = tinted (src.card, t, 0.2f);
+    s.ink = src.ink;
+    s.plateLine = src.plateLine;
+    s.ring = src.ring;
+    if (dark != s.night)
+    {
+        s.btn = tinted (src.btn, t, 0.25f);
+        s.btnEdge = tinted (src.btnEdge, t, 0.6f);
+        s.btnText = src.btnText;
+        s.btnShadow = src.btnShadow;
+    }
+    else
+    {
+        s.btn = tinted (s.btn, t, 0.25f);
+        s.btnEdge = tinted (s.btnEdge, t, 0.6f);
+    }
+    s.night = dark;   // las sombras y brillos se calculan para un cuerpo claro u oscuro
+}
+
+static Skin makeSkin (const String& lk, bool night, Colour uiTint, bool exact, Colour uiAccent,
+                      Colour keyLit, Colour keyWhite, Colour keyBlack, bool rainbow, int keyStyle,
+                      const PieceStyle& pieces, float soft)
+{
+    const int li = lookIndex (lk);
+    Skin s = baseSkin (li, night);
 
     // Tono propio del cuerpo de la interfaz
     if (! uiTint.isTransparent())
     {
-        for (auto* c : { &s.backdrop, &s.body1, &s.body2, &s.edge, &s.plate, &s.keyBed })
-            *c = tinted (*c, uiTint, 0.75f);
-        s.card = tinted (s.card, uiTint, 0.2f);
-        if (s.look != 1) s.btn = tinted (s.btn, uiTint, 0.25f);
-        else             s.btn = tinted (s.btn, uiTint, 0.5f);
-        s.btnEdge = tinted (s.btnEdge, uiTint, 0.6f);
-        s.dim = tinted (s.dim, uiTint, 0.35f);
-        if (s.look == 2) s.screen = tinted (s.screen, uiTint, 0.6f);
+        if (exact) exactBody (s, li, uiTint);
+        else
+        {
+            for (auto* c : { &s.backdrop, &s.body1, &s.body2, &s.edge, &s.plate, &s.keyBed })
+                *c = tinted (*c, uiTint, 0.75f);
+            s.card = tinted (s.card, uiTint, 0.2f);
+            if (s.look != 1) s.btn = tinted (s.btn, uiTint, 0.25f);
+            else             s.btn = tinted (s.btn, uiTint, 0.5f);
+            s.btnEdge = tinted (s.btnEdge, uiTint, 0.6f);
+            s.dim = tinted (s.dim, uiTint, 0.35f);
+            if (s.look == 2) s.screen = tinted (s.screen, uiTint, 0.6f);
+        }
     }
     // Color de acento propio
     if (! uiAccent.isTransparent())
@@ -780,7 +1000,32 @@ Skin Prefs::palette (const String& lookOverride) const
     if (! keyWhite.isTransparent()) { s.keyW = keyWhite; s.keyWEdge = keyWhite.darker (0.25f); }
     if (! keyBlack.isTransparent()) s.keyB = keyBlack;
     s.rainbow = rainbow;
-    s.keyStyle = keyStyle >= 0 ? keyStyle : looks()[(size_t) lookIndex (lk)].defaultKeys;
+    s.keyStyle = keyStyle >= 0 ? keyStyle : looks()[(size_t) li].defaultKeys;
     s.pieces = pieces;
+
+    // Colores suaves: todo un poco más gris y menos brillante
+    s.soft = jlimit (0.0f, 1.0f, soft);
+    if (s.soft > 0.001f)
+    {
+        for (auto* c : { &s.backdrop, &s.body1, &s.body2, &s.edge, &s.text, &s.dim, &s.btn, &s.btnEdge, &s.btnText,
+                         &s.plate, &s.card, &s.ink, &s.screen, &s.scrText, &s.scrDim, &s.accent, &s.lit,
+                         &s.caps[0], &s.caps[1], &s.caps[2], &s.caps[3], &s.keyW, &s.keyWEdge, &s.keyB, &s.keyBed, &s.region })
+            *c = s.soften (*c);
+        for (auto* c : { &s.pieces.scrText, &s.pieces.scrBack, &s.pieces.degColour, &s.pieces.cirColour, &s.pieces.stfInk, &s.pieces.stfPaper })
+            *c = s.soften (*c);
+    }
     return s;
+}
+
+Skin Prefs::palette (const String& lookOverride) const
+{
+    return makeSkin (lookOverride.isNotEmpty() ? lookOverride : look, isNight(), uiTint, uiTintExact, uiAccent,
+                     keyLit, keyWhite, keyBlack, rainbow, keyStyle, pieces, soft);
+}
+
+Skin Prefs::paletteFor (const ThemePreset& t) const
+{
+    const bool night = t.dayNight < 0 ? isNight() : (t.dayNight == 1 || (t.dayNight == 2 && isNight()));
+    return makeSkin (t.look, night, t.uiTint, t.uiTintExact, t.uiAccent, t.keyLit, t.keyWhite, t.keyBlack,
+                     t.rainbow, t.keyStyle, t.pieces, t.soft);
 }

@@ -374,6 +374,18 @@ namespace draw
             p.addEllipse (cc.x - s * 0.11f, cc.y - s * 0.11f, s * 0.22f, s * 0.22f);
             if (name == "eyeoff") { p.startNewSubPath (P (4, 4)); p.lineTo (P (20, 20)); }
         }
+        else if (name == "tune")
+        {
+            // Tres deslizadores (ajustar esta pieza)
+            const float ys[3] = { 7.0f, 12.0f, 17.0f }, xs[3] = { 15.0f, 8.5f, 13.0f };
+            for (int i = 0; i < 3; ++i)
+            {
+                p.startNewSubPath (P (4.5f, ys[i])); p.lineTo (P (xs[i] - 2.2f, ys[i]));
+                p.startNewSubPath (P (xs[i] + 2.2f, ys[i])); p.lineTo (P (19.5f, ys[i]));
+                const auto cc = P (xs[i], ys[i]);
+                p.addEllipse (cc.x - s * 0.085f, cc.y - s * 0.085f, s * 0.17f, s * 0.17f);
+            }
+        }
         else if (name == "menu")
         {
             for (float y : { 7.0f, 12.0f, 17.0f }) { p.startNewSubPath (P (5, y)); p.lineTo (P (19, y)); }
@@ -832,9 +844,10 @@ bool PushButton::inMoreZone (Point<int> p) const
 
 void PushButton::mouseUp (const MouseEvent& e)
 {
+    const bool wasDown = down;
     down = false;
     animate();
-    if (! getLocalBounds().contains (e.getPosition())) return;
+    if (! wasDown || ! getLocalBounds().contains (e.getPosition())) return;
     if (onMore != nullptr && (e.mods.isPopupMenu() || inMoreZone (e.getPosition()))) { onMore(); return; }
     if (onClick) onClick();
 }
@@ -943,9 +956,10 @@ bool FieldButton::stepAnimation (float dt)
 
 void FieldButton::mouseUp (const MouseEvent& e)
 {
+    const bool wasDown = down;
     down = false;
     animate();
-    if (getLocalBounds().contains (e.getPosition()) && onClick) onClick();
+    if (wasDown && getLocalBounds().contains (e.getPosition()) && onClick) onClick();
 }
 
 void FieldButton::paint (Graphics& g)
@@ -1102,15 +1116,28 @@ void Popover::requestClose()
     });
 }
 
+static constexpr int popPad = 18, popHead = 50;
+
+float Popover::currentScale() const
+{
+    return (float) panel.getWidth() / (float) jmax (1, content->getWidth() + popPad * 2);
+}
+
+Rectangle<int> Popover::gripArea() const
+{
+    const int g = jmax (14, roundToInt (18.0f * currentScale()));
+    return { panel.getRight() - g - 3, panel.getBottom() - g - 3, g, g };
+}
+
 void Popover::resized()
 {
     if (getParentComponent() == nullptr) return;
-    const int pad = 18, head = 50;
-    int w = content->getWidth() + pad * 2;
-    int h = content->getHeight() + pad + head;
-    const auto area = getLocalBounds().reduced (10);
-    float scale = 1.0f;
-    if (w > area.getWidth() || h > area.getHeight())
+    const int w = content->getWidth() + popPad * 2;
+    const int h = content->getHeight() + popPad + popHead;
+    const auto area = getLocalBounds().reduced (8);
+    // Escala del plugin × tu tamaño; si no cabe, se encoge para caber
+    float scale = jlimit (0.3f, 2.4f, ctx.vis.uiScale * zoom);
+    if ((float) w * scale > (float) area.getWidth() || (float) h * scale > (float) area.getHeight())
         scale = jmin ((float) area.getWidth() / (float) w, (float) area.getHeight() / (float) h);
     const int sw = roundToInt ((float) w * scale), sh = roundToInt ((float) h * scale);
 
@@ -1120,53 +1147,160 @@ void Popover::resized()
     y = jlimit (area.getY(), area.getBottom() - sh, y);
     if (! avoid.isEmpty())
     {
-        // Que no tape la pieza que estás editando: se prueba en las esquinas y se queda donde tape menos
+        // Que no tape la pieza que estás editando: se prueba en varios lugares y se queda donde tape menos
         int bestOverlap = std::numeric_limits<int>::max();
         for (auto pos : { Point<int> (area.getX(), area.getY()), Point<int> (area.getRight() - sw, area.getY()),
                           Point<int> (area.getX(), area.getBottom() - sh), Point<int> (area.getRight() - sw, area.getBottom() - sh),
-                          Point<int> (area.getCentreX() - sw / 2, area.getBottom() - sh), Point<int> (area.getCentreX() - sw / 2, area.getY()) })
+                          Point<int> (area.getCentreX() - sw / 2, area.getBottom() - sh), Point<int> (area.getCentreX() - sw / 2, area.getY()),
+                          Point<int> (avoid.getRight() + 10, avoid.getY()), Point<int> (avoid.getX() - 10 - sw, avoid.getY()) })
         {
-            const auto cand = Rectangle<int> (pos.x, pos.y, sw, sh);
+            const auto cand = Rectangle<int> (pos.x, pos.y, sw, sh).constrainedWithin (area);
             const auto inter = cand.getIntersection (avoid);
             const int overlap = inter.getWidth() * inter.getHeight();
-            if (overlap < bestOverlap) { bestOverlap = overlap; x = pos.x; y = pos.y; }
+            if (overlap < bestOverlap) { bestOverlap = overlap; x = cand.getX(); y = cand.getY(); }
         }
     }
-    x = jlimit (area.getX(), area.getRight() - sw, x + userOffset.x);
-    y = jlimit (area.getY(), area.getBottom() - sh, y + userOffset.y);
+    if (pinned) { x = pinPos.x; y = pinPos.y; }
+    x = jlimit (area.getX(), jmax (area.getX(), area.getRight() - sw), x);
+    y = jlimit (area.getY(), jmax (area.getY(), area.getBottom() - sh), y);
+    const bool moved = panel.getPosition() != Point<int> (x, y) || panel.getWidth() != sw;
     panel = { x, y, sw, sh };
 
-    content->setTransform (AffineTransform::scale (scale).translated ((float) x + (float) pad * scale, (float) y + (float) head * scale));
+    content->setTransform (AffineTransform::scale (scale).translated ((float) x + (float) popPad * scale, (float) y + (float) popHead * scale));
     content->setTopLeftPosition (0, 0);
     const int cb = roundToInt (34.0f * scale);
     closeBtn.setBounds (panel.getRight() - cb - roundToInt (12.0f * scale), panel.getY() + roundToInt (10.0f * scale), cb, cb);
+    if (moved && dragMode == 0) refreshGlass();
+}
+
+// Desenfoque rápido (tres pasadas de caja) de una imagen RGB
+static void blurRGB (Image& img, int radius)
+{
+    Image::BitmapData bd (img, Image::BitmapData::readWrite);
+    const int w = bd.width, h = bd.height, ps = bd.pixelStride;
+    if (w < 2 || h < 2) return;
+    std::vector<int> acc (3);
+    std::vector<uint8_t> line ((size_t) jmax (w, h) * 3);
+    for (int pass = 0; pass < 3; ++pass)
+    {
+        for (int y = 0; y < h; ++y)
+        {
+            auto* row = bd.getLinePointer (y);
+            auto px = [&] (int x, int c) { return (int) row[jlimit (0, w - 1, x) * ps + c]; };
+            for (int c = 0; c < 3; ++c)
+            {
+                int a = 0;
+                for (int x = -radius; x <= radius; ++x) a += px (x, c);
+                for (int x = 0; x < w; ++x)
+                {
+                    line[(size_t) (x * 3 + c)] = (uint8_t) (a / (2 * radius + 1));
+                    a += px (x + radius + 1, c) - px (x - radius, c);
+                }
+            }
+            for (int x = 0; x < w; ++x) for (int c = 0; c < 3; ++c) row[x * ps + c] = line[(size_t) (x * 3 + c)];
+        }
+        for (int x = 0; x < w; ++x)
+        {
+            auto px = [&] (int y, int c) { return (int) bd.getLinePointer (jlimit (0, h - 1, y))[x * ps + c]; };
+            for (int c = 0; c < 3; ++c)
+            {
+                int a = 0;
+                for (int y = -radius; y <= radius; ++y) a += px (y, c);
+                for (int y = 0; y < h; ++y)
+                {
+                    line[(size_t) (y * 3 + c)] = (uint8_t) (a / (2 * radius + 1));
+                    a += px (y + radius + 1, c) - px (y - radius, c);
+                }
+            }
+            for (int y = 0; y < h; ++y) for (int c = 0; c < 3; ++c) bd.getLinePointer (y)[x * ps + c] = line[(size_t) (y * 3 + c)];
+        }
+    }
+}
+
+void Popover::refreshGlass()
+{
+    if (! backdrop || panel.isEmpty()) { glass = {}; return; }
+    auto img = backdrop (panel, 0.14f);
+    if (img.isValid())
+    {
+        blurRGB (img, 4);
+        glass = img;
+       #if MIDISKY_DEMO
+        if (SystemStats::getEnvironmentVariable ("MIDISKY_DUMPGLASS", "").isNotEmpty())
+        {
+            FileOutputStream os (File ("/tmp/glass.png"));
+            if (os.openedOk()) { os.setPosition (0); os.truncate(); PNGImageFormat().writeImageToStream (glass, os); }
+        }
+       #endif
+    }
+    repaint (panel.expanded (2));
 }
 
 void Popover::paint (Graphics& g)
 {
     const auto& pal = ctx.vis.pal;
-    g.setColour (Colours::black.withAlpha ((pal.night ? 0.35f : 0.16f) * dimAmount));
-    g.fillAll();
+    if (dimAmount > 0.0f)
+    {
+        g.setColour (Colours::black.withAlpha ((pal.night ? 0.35f : 0.16f) * dimAmount));
+        g.fillAll();
+    }
 
+    const float scale = currentScale();
     auto p = panel.toFloat();
+    const float rad = 20.0f * jmin (1.0f, scale + 0.2f);
     for (int i = 4; i >= 1; --i)
     {
         g.setColour (Colours::black.withAlpha (0.06f));
-        g.fillRoundedRectangle (p.translated (0.0f, (float) i * 2.5f).expanded ((float) i * 1.5f), 22.0f);
+        g.fillRoundedRectangle (p.translated (0.0f, (float) i * 2.5f).expanded ((float) i * 1.5f), rad + 2.0f);
     }
+    Path shape;
+    shape.addRoundedRectangle (p, rad);
     const auto bg = pal.night ? pal.body1.brighter (0.06f) : pal.body1;
-    ColourGradient gr (bg.brighter (0.04f), 0.0f, p.getY(), bg, 0.0f, p.getBottom(), false);
-    g.setGradientFill (gr);
-    g.fillRoundedRectangle (p, 20.0f);
-    g.setColour (pal.edge);
-    g.drawRoundedRectangle (p.reduced (0.5f), 20.0f, 1.0f);
+    if (glass.isValid())
+    {
+        // Vidrio esmerilado: lo de atrás, difuminado, y encima el color del panel medio transparente
+        Graphics::ScopedSaveState ss (g);
+        g.reduceClipRegion (shape);
+        g.setImageResamplingQuality (Graphics::highResamplingQuality);
+        g.setOpacity (1.0f);   // (drawImage usa la opacidad del color actual)
+        g.drawImage (glass, p);
+        // Poco transparente: lo de atrás apenas se adivina, bien difuminado
+        ColourGradient gr (bg.brighter (0.05f).withAlpha (pal.night ? 0.88f : 0.86f), 0.0f, p.getY(),
+                           bg.withAlpha (pal.night ? 0.93f : 0.92f), 0.0f, p.getBottom(), false);
+        g.setGradientFill (gr);
+        g.fillRect (p);
+        // Brillo suave arriba
+        ColourGradient sheen (Colours::white.withAlpha (pal.night ? 0.06f : 0.35f), 0.0f, p.getY(),
+                              Colours::white.withAlpha (0.0f), 0.0f, p.getY() + 80.0f * scale, false);
+        g.setGradientFill (sheen);
+        g.fillRect (p.withHeight (80.0f * scale));
+    }
+    else
+    {
+        ColourGradient gr (bg.brighter (0.04f), 0.0f, p.getY(), bg, 0.0f, p.getBottom(), false);
+        g.setGradientFill (gr);
+        g.fillPath (shape);
+    }
+    g.setColour (pal.night ? Colours::white.withAlpha (0.12f) : pal.edge.withAlpha (0.8f));
+    g.strokePath (shape, PathStrokeType (1.0f));
     g.setColour (Colours::white.withAlpha (pal.night ? 0.08f : 0.8f));
-    g.drawLine (p.getX() + 20.0f, p.getY() + 1.5f, p.getRight() - 20.0f, p.getY() + 1.5f, 1.0f);
+    g.drawLine (p.getX() + rad, p.getY() + 1.5f, p.getRight() - rad, p.getY() + 1.5f, 1.0f);
 
-    const float scale = (float) panel.getWidth() / (float) jmax (1, content->getWidth() + 36);
     g.setColour (pal.text);
     g.setFont (ctx.fonts.ui (18.0f * scale, 2));
     g.drawText (title, p.withHeight (54.0f * scale).withTrimmedLeft (20.0f * scale).withTrimmedRight (60.0f * scale), Justification::centredLeft, true);
+
+    // Esquina para cambiar el tamaño
+    const auto gr = gripArea().toFloat();
+    g.setColour (pal.text.withAlpha (dragMode == 2 ? 0.6f : 0.3f));
+    for (int i = 0; i < 3; ++i)
+        for (int j = 0; j <= i; ++j)
+        {
+            const float d = jmax (2.0f, gr.getWidth() * 0.14f);
+            const float x = gr.getRight() - (float) (j + 1) * gr.getWidth() * 0.3f;
+            const float y = gr.getBottom() - (float) (i - j + 1) * gr.getWidth() * 0.3f;
+            g.fillEllipse (x, y, d, d);
+        }
 }
 
 void Popover::mouseDown (const MouseEvent& e)
@@ -1176,27 +1310,50 @@ void Popover::mouseDown (const MouseEvent& e)
         requestClose();
         return;
     }
-    // Arrastrar desde el título mueve el panel (para ver lo que está atrás)
-    const float scale = (float) panel.getWidth() / (float) jmax (1, content->getWidth() + 36);
-    draggingPanel = e.y < panel.getY() + roundToInt (50.0f * scale);
-    dragStartOffset = userOffset;
+    const float scale = currentScale();
+    dragMode = gripArea().expanded (4).contains (e.getPosition()) ? 2
+             : (e.y < panel.getY() + roundToInt (50.0f * scale) ? 1 : 0);
+    dragStartPos = panel.getPosition();
+    zoomStart = zoom;
+    panelWStart = panel.getWidth();
 }
 
 void Popover::mouseDrag (const MouseEvent& e)
 {
-    if (! draggingPanel) return;
-    userOffset = dragStartOffset + e.getOffsetFromDragStart();
-    resized();
-    repaint();
+    if (dragMode == 1)
+    {
+        pinned = true;
+        pinPos = dragStartPos + e.getOffsetFromDragStart();
+        resized();
+        repaint();
+    }
+    else if (dragMode == 2)
+    {
+        // Arrastrar la esquina: más grande o más chico, sin moverse de su lugar
+        const auto d = e.getOffsetFromDragStart();
+        const float grow = (float) jmax (d.x, d.y * panelWStart / jmax (1, panel.getHeight()));
+        const float ratio = jmax (0.3f, (float) (panelWStart + grow) / (float) jmax (1, panelWStart));
+        zoom = jlimit (0.5f, 1.6f, zoomStart * ratio);
+        pinned = true;
+        pinPos = dragStartPos;
+        resized();
+        repaint();
+    }
 }
 
-void Popover::mouseUp (const MouseEvent&) { draggingPanel = false; }
+void Popover::mouseUp (const MouseEvent&)
+{
+    if (dragMode == 2 && onZoom) onZoom (zoom);
+    if (dragMode != 0) { dragMode = 0; refreshGlass(); repaint(); }
+}
 
 void Popover::mouseMove (const MouseEvent& e)
 {
-    const float scale = (float) panel.getWidth() / (float) jmax (1, content->getWidth() + 36);
-    const bool head = panel.contains (e.getPosition()) && e.y < panel.getY() + roundToInt (50.0f * scale);
-    setMouseCursor (head ? MouseCursor::DraggingHandCursor : MouseCursor::NormalCursor);
+    const float scale = currentScale();
+    const auto p = e.getPosition();
+    if (panel.contains (p) && gripArea().expanded (4).contains (p)) setMouseCursor (MouseCursor::BottomRightCornerResizeCursor);
+    else if (panel.contains (p) && e.y < panel.getY() + roundToInt (50.0f * scale)) setMouseCursor (MouseCursor::DraggingHandCursor);
+    else setMouseCursor (MouseCursor::NormalCursor);
 }
 
 bool Popover::keyPressed (const KeyPress& k)

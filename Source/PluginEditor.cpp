@@ -250,6 +250,13 @@ MidiSkyEditor::MidiSkyEditor (MidiSkyProcessor& p)
 
     for (auto* s : sections())
         s->onDetach = [this, s] { detach (*s); };
+    // Botoncito de ajustes de cada pieza
+    screen.onTune   = [this] { showPiecePanel (PiecePanel::screenPiece); };
+    degrees.onTune  = [this] { showPiecePanel (PiecePanel::degreesPiece); };
+    circle.onTune   = [this] { showPiecePanel (PiecePanel::circlePiece); };
+    score.onTune    = [this] { showPiecePanel (PiecePanel::staffPiece); };
+    keyboard.onTune = [this] { showPiecePanel (PiecePanel::keysPiece); };
+    circle.onLatin  = [this] (bool latin) { prefs->latin = latin; prefs->save(); };
 
     // --- Teclado y sus controles
     keyboard.pianoSw.onChange = [this] (bool v) { setBool ("piano", v); };
@@ -419,24 +426,34 @@ void MidiSkyEditor::applyRange (int startC, int octaves)
 void MidiSkyEditor::refreshPalette()
 {
     vis.pal = prefs->palette();
+    winVis.pal = windowSkin (vis.pal);
+    winVis.latin = prefs->latin;
+    winVis.hideParams = vis.hideParams;
     MotionSettings::speed = prefs->pieces.anim ? prefs->pieces.animSpeed : 60.0f;
     MotionSettings::panels = prefs->pieces.anim && prefs->pieces.panelMotion;
     vis.latin = prefs->latin;
     vis.sevenths = prefs->sevenths;
-    look.setPalette (vis.pal);
+    look.setPalette (winVis.pal);   // menús, avisos y ventanas: de día, claros
     rail.transpBtn.setActive (prefs->transparent);
     rail.splitBtn.setActive (keyboard.floating);
     rail.hideBtn.setIcon (prefs->hideParams ? "eye" : "eyeoff");
-    rail.dayBtn.setIcon (vis.pal.night ? "moon" : "sun");
+    rail.dayBtn.setIcon (prefs->isNight() ? "moon" : "sun");
     rail.dayBtn.setActive (prefs->dayNight == 2);
-    lastNight = vis.pal.night;
+    lastNight = prefs->isNight();
     applyRange (prefs->startC, prefs->octaves);
     rebuildBackground();
     lastRoot = -1;
     repaint();
     for (auto& [id, w] : windows)
         if (w != nullptr) w->repaint();
-    if (popover != nullptr) { popover->sendLookAndFeelChange(); popover->repaint(); }
+    if (popover != nullptr)
+    {
+        popover->sendLookAndFeelChange();
+        popover->repaint();
+        // El vidrio del panel se actualiza cuando ya se pintó lo de atrás
+        Component::SafePointer<Popover> sp (popover.get());
+        Timer::callAfterDelay (60, [sp] { if (sp != nullptr) sp->refreshGlass(); });
+    }
 }
 
 void MidiSkyEditor::changeListenerCallback (ChangeBroadcaster*)
@@ -496,6 +513,7 @@ void MidiSkyEditor::resized()
     proc.editorH.store (getHeight());
 
     k = jlimit (0.45f, 2.6f, jmin ((float) getWidth() / kRefW, (float) getHeight() / naturalHeight()));
+    vis.uiScale = winVis.uiScale = k;
     const int m = roundToInt (kMargin * k);
     const int gap = roundToInt (kGap * k);
 
@@ -549,7 +567,7 @@ void MidiSkyEditor::resized()
 
     for (auto* s : sections())
         if (! s->floating) s->resized();
-    if (popover != nullptr) popover->setBounds (getLocalBounds());
+    if (popover != nullptr) { popover->setBounds (getLocalBounds()); popover->resized(); }
 
     updateResetButton();
     rebuildBackground();
@@ -566,12 +584,27 @@ void MidiSkyEditor::showPopover (const String& id, const String& title, std::uni
         closePopover();
         if (same) return;   // tocar el mismo botón lo cierra
     }
-    popover = std::make_unique<Popover> (ctx, title, std::move (content), getLocalArea (&anchor, anchor.getLocalBounds()));
+    popover = std::make_unique<Popover> (winCtx, title, std::move (content), getLocalArea (&anchor, anchor.getLocalBounds()));
     popover->anchorId = id;
     popover->onClose = [this] { closePopover(); };
+    // Cada panel recuerda su tamaño (se ajusta arrastrando su esquina)
+    {
+        auto it = prefs->panelZoom.find (id.upToFirstOccurrenceOf (":", false, false));
+        const bool piece = id.startsWith ("pieza");
+        popover->zoom = it != prefs->panelZoom.end() ? it->second : (piece ? 1.0f : 0.92f);
+        const auto key = id.upToFirstOccurrenceOf (":", false, false);
+        popover->onZoom = [this, key] (float z) { prefs->panelZoom[key] = z; prefs->save (false); };
+    }
+    Component::SafePointer<MidiSkyEditor> safe (this);
+    popover->backdrop = [safe] (Rectangle<int> area, float scale) -> Image
+    {
+        if (auto* ed = safe.getComponent()) return ed->backdropFor (area, scale);
+        return {};
+    };
     addAndMakeVisible (*popover);
     popover->sendLookAndFeelChange();   // que los controles internos tomen los colores actuales
     popover->setBounds (getLocalBounds());
+    popover->resized();
     popover->toFront (true);
     popover->grabKeyboardFocus();
     if (MotionSettings::panels)
@@ -579,6 +612,26 @@ void MidiSkyEditor::showPopover (const String& id, const String& title, std::uni
         popover->setAlpha (0.0f);
         Desktop::getInstance().getAnimator().animateComponent (popover.get(), popover->getBounds(), 1.0f, 160, false, 0.0, 1.0);
     }
+}
+
+Image MidiSkyEditor::backdropFor (Rectangle<int> area, float scale)
+{
+    // Lo que hay detrás del panel (sin el panel), chiquito para difuminarlo rápido
+    area = area.getIntersection (getLocalBounds());
+    const int w = jmax (1, roundToInt ((float) area.getWidth() * scale)), h = jmax (1, roundToInt ((float) area.getHeight() * scale));
+    if (area.isEmpty()) return {};
+    Image img (Image::RGB, w, h, true);
+    Graphics g (img);
+    g.addTransform (AffineTransform::translation ((float) -area.getX(), (float) -area.getY()).scaled (scale));
+    paint (g);
+    for (auto* c : getChildren())
+    {
+        if (c == popover.get() || ! c->isVisible() || ! c->getBounds().intersects (area)) continue;
+        Graphics::ScopedSaveState ss (g);
+        g.setOrigin (c->getPosition());
+        c->paintEntireComponent (g, false);
+    }
+    return img;
 }
 
 void MidiSkyEditor::closePopover()
@@ -596,27 +649,89 @@ PopupMenu::Options MidiSkyEditor::menuOptions (Component& target, int minWidth)
                                .withMinimumWidth (minWidth).withStandardItemHeight (30);
 }
 
-void MidiSkyEditor::showInterfacePanel (Component& anchor)
+LayoutPreset MidiSkyEditor::currentLayout (const String& name)
 {
-    Component::SafePointer<MidiSkyEditor> safe (this);
-    auto panel = std::make_unique<CustomizePanel> (ctx, *prefs, [safe]
+    LayoutPreset l;
+    l.name = name;
+    for (auto* s : sections())
     {
-        MessageManager::callAsync ([safe] { if (auto* ed = safe.getComponent()) ed->showDegreeInputPanel(); });
-    });
-    auto* raw = panel.get();
-    showPopover ("interfaz", "Personalizar", std::move (panel), anchor);
-    if (popover != nullptr && popover->anchorId == "interfaz")
-    {
-        popover->dimAmount = 0.12f;   // casi sin oscurecer: los cambios se ven en vivo
-        raw->onTab = [safe] (int tab) { if (auto* ed = safe.getComponent()) ed->avoidForTab (tab); };
-        avoidForTab (raw->currentTab());
+        auto f = prefs->floats[s->id];
+        f.floating = s->floating;
+        if (s->floating)
+            if (auto* w = windows[s->id].get())
+            {
+                f.collapsed = w->shell().isCollapsed();
+                if (! f.collapsed) f.bounds = w->getBounds();
+            }
+        l.floats[s->id] = f;
     }
+    l.transparent = prefs->transparent;
+    l.hideParams = prefs->hideParams;
+    l.editorW = getWidth();
+    l.editorH = getHeight();
+    return l;
 }
 
-void MidiSkyEditor::showKeysPanel (Component& anchor)
+PanelHooks MidiSkyEditor::panelHooks()
 {
-    CustomizePanel::setStartTab (1);
-    showInterfacePanel (anchor);
+    Component::SafePointer<MidiSkyEditor> safe (this);
+    PanelHooks h;
+    h.openDegreeInput = [safe]
+    {
+        MessageManager::callAsync ([safe] { if (auto* ed = safe.getComponent()) ed->showDegreeInputPanel(); });
+    };
+    h.captureTheme = [safe] (const String& name)
+    {
+        auto* ed = safe.getComponent();
+        if (ed == nullptr) return ThemePreset();
+        auto t = ed->prefs->captureTheme (name);
+        t.hasLayout = true;
+        t.layout = ed->currentLayout (name);
+        return t;
+    };
+    h.applyTheme = [safe] (const ThemePreset& t)
+    {
+        auto* ed = safe.getComponent();
+        if (ed == nullptr) return;
+        ed->prefs->applyTheme (t);
+        ed->applyRange (ed->prefs->startC, ed->prefs->octaves);
+        if (t.hasLayout)
+        {
+            // El acomodo de las ventanas se aplica después (cierra este panel)
+            const auto layout = t.layout;
+            MessageManager::callAsync ([safe, layout] { if (auto* e2 = safe.getComponent()) e2->applyLayoutPreset (layout); });
+        }
+    };
+    return h;
+}
+
+void MidiSkyEditor::showInterfacePanel (Component& anchor)
+{
+    auto panel = std::make_unique<CustomizePanel> (winCtx, *prefs, panelHooks());
+    showPopover ("interfaz", "Personalizar", std::move (panel), anchor);
+    if (popover != nullptr && popover->anchorId == "interfaz")
+        popover->dimAmount = 0.0f;   // sin oscurecer: los cambios se ven en vivo
+}
+
+void MidiSkyEditor::showKeysPanel (Component&)
+{
+    showPiecePanel (PiecePanel::keysPiece);
+}
+
+void MidiSkyEditor::showPiecePanel (int piece)
+{
+    Section* sec = piece == PiecePanel::screenPiece ? (Section*) &screen
+                 : piece == PiecePanel::degreesPiece ? (Section*) &degrees
+                 : piece == PiecePanel::circlePiece ? (Section*) &circle
+                 : piece == PiecePanel::staffPiece ? (Section*) &score : (Section*) &keyboard;
+    auto panel = std::make_unique<PiecePanel> (winCtx, *prefs, piece, panelHooks());
+    showPopover ("pieza:" + String (piece), PiecePanel::titleFor (piece), std::move (panel), *sec);
+    if (popover != nullptr && popover->anchorId.startsWith ("pieza"))
+    {
+        popover->dimAmount = 0.0f;
+        // Que no tape la pieza que estás ajustando
+        if (! sec->floating) popover->setAvoid (sec->getBounds());
+    }
 }
 
 //==============================================================================
@@ -1044,7 +1159,7 @@ void MidiSkyEditor::frame()
         const int count = (int) vis.active.size();
         const int distinct = theory::countBits (vis.activeMask);
         String big;
-        if (count == 0) big = theory::keyTitle (vis.keyRoot, vis.scale, vis.latin);
+        if (count == 0) big = vis.pal.pieces.scrIdle == 1 ? theory::keyTitle (vis.keyRoot, vis.scale, vis.latin) : String();
         else if (distinct == 1) big = theory::noteName (vis.active.front(), vis.sig, vis.latin, count == 1);
         else if (vis.chord.valid && (distinct >= 3 || vis.chord.suffix == "5")) big = vis.chord.symbol;
         else if (distinct == 2) big = theory::intervalName (theory::firstInterval (vis.active));
@@ -1206,6 +1321,18 @@ void MidiSkyEditor::timerCallback()
        #if MIDISKY_DEMO
         if (demoPopover == "interfaz") CustomizePanel::setStartTab (SystemStats::getEnvironmentVariable ("MIDISKY_TAB", "0").getIntValue());
         if (demoPopover == "grados") showDegreeInputPanel();
+        if (demoPopover.startsWith ("pieza")) showPiecePanel (demoPopover.getTrailingIntValue());
+        if (demoPopover == "metro") showMetronomePanel (rail.metroBtn);
+        if (demoPopover == "grabaciones") showRecordingsPanel (rail.recBtn);
+        {
+            const auto dt = SystemStats::getEnvironmentVariable ("MIDISKY_DRAGTEST", "");
+            if (dt.isNotEmpty()) File ("/tmp/dragtest.txt").replaceWithText (MidiRecorder::dragCopy (File (dt)).getFullPathName());
+        }
+        if (demoPopover == "roll")
+        {
+            const auto recs = MidiRecorder::recordings();
+            if (! recs.isEmpty()) openPianoRoll (recs[0]);
+        }
        #endif
         if (demoPopover == "interfaz") showInterfacePanel (keyboard.uiColourBtn);
         if (demoPopover == "teclas") showKeysPanel (keyboard.keysColourBtn);
@@ -1434,7 +1561,7 @@ void MidiSkyEditor::showSoundMenu()
                 if (auto* ed = safe.getComponent())
                 {
                     if (err.isNotEmpty())
-                        ed->showPopover ("error", "No se pudo abrir", std::make_unique<TextPanel> (ed->ctx, err, 420), ed->keyboard.soundBtn);
+                        ed->showPopover ("error", "No se pudo abrir", std::make_unique<TextPanel> (ed->winCtx, err, 420), ed->keyboard.soundBtn);
                     else
                         ed->openHostedWindow();
                 }
@@ -1472,7 +1599,7 @@ void MidiSkyEditor::showWindowsMenu()
     {
         if (r == 60)
         {
-            auto panel = std::make_unique<NamePanel> (ctx, U8 ("Nombre del acomodo (guarda las ventanas separadas, invisibles y su lugar)"),
+            auto panel = std::make_unique<NamePanel> (winCtx, U8 ("Nombre del acomodo (guarda las ventanas separadas, invisibles y su lugar)"),
                                                       "Acomodo " + String ((int) prefs->layouts.size() + 1));
             panel->onSave = [this] (const String& name) { saveLayoutPreset (name); MessageManager::callAsync ([this] { closePopover(); }); };
             showPopover ("acomodo", "Guardar acomodo", std::move (panel), rail.windowsBtn);
@@ -1509,19 +1636,6 @@ void MidiSkyEditor::showMainMenu()
     dn.addItem (31, "Noche", true, prefs->dayNight == 1);
     dn.addItem (32, U8 ("Automático (según la hora)"), true, prefs->dayNight == 2);
 
-    PopupMenu lookM;
-    for (int i = 0; i < (int) looks().size(); ++i)
-        lookM.addItem (40 + i, looks()[(size_t) i].name, true, lookIndex (prefs->look) == i);
-
-    PopupMenu keysM;
-    const auto kn = keyStyleNames();
-    for (int i = 0; i < kn.size(); ++i)
-        keysM.addItem (60 + i, kn[i], true, prefs->effectiveKeyStyle() == i);
-
-    PopupMenu names;
-    names.addItem (10, U8 ("C D E (inglés)"), true, ! prefs->latin);
-    names.addItem (11, U8 ("Do Re Mi (latino)"), true, prefs->latin);
-
     PopupMenu chordsM;
     chordsM.addItem (12, U8 ("Tríadas"), true, ! prefs->sevenths);
     chordsM.addItem (13, U8 ("Con séptima"), true, prefs->sevenths);
@@ -1531,10 +1645,8 @@ void MidiSkyEditor::showMainMenu()
         size.addItem (300 + pct, String (pct) + " %");
 
     PopupMenu m;
-    m.addSubMenu ("Estilo", lookM);
+    m.addItem (20, U8 ("Personalizar (estilo, temas y movimiento)…"));
     m.addSubMenu (U8 ("Modo día / noche"), dn);
-    m.addSubMenu ("Forma de las teclas", keysM);
-    m.addItem (20, U8 ("Personalizar todo (colores, diseños, formas y movimiento)…"));
     m.addSeparator();
     m.addItem (22, U8 ("Metrónomo…"));
     m.addItem (23, U8 ("Grabaciones MIDI…"));
@@ -1542,7 +1654,6 @@ void MidiSkyEditor::showMainMenu()
     m.addItem (27, U8 ("Grados: teclas y pads…"));
     if (proc.host != nullptr) m.addItem (24, U8 ("Tus instrumentos VST3 / AU…"));
     m.addSeparator();
-    m.addSubMenu ("Nombres de las notas", names);
     m.addSubMenu ("Acordes de la tonalidad", chordsM);
     m.addSubMenu (U8 ("Tamaño de la ventana"), size);
     m.addItem (26, U8 ("Latencia…"));
@@ -1566,7 +1677,7 @@ void MidiSkyEditor::showMainMenu()
         else if (r == 14) showAbout();
         else if (r == 15) resetLayout();
         else if (r == 20) showInterfacePanel (rail.colourBtn);
-        else if (r == 21) showKeysPanel (keyboard.keysColourBtn);
+        else if (r == 21) showPiecePanel (PiecePanel::keysPiece);
         else if (r == 22) showMetronomePanel (rail.metroBtn);
         else if (r == 23) showRecordingsPanel (rail.recBtn);
         else if (r == 24) showPluginsPanel (keyboard.soundBtn);
@@ -1617,19 +1728,19 @@ void MidiSkyEditor::showLatencyPanel()
         };
     }
    #endif
-    showPopover ("latencia", "Compensar latencia", std::make_unique<LatencyPanel> (ctx, *lat, isStandalone(), info, setBuf), rail.menuBtn);
+    showPopover ("latencia", "Compensar latencia", std::make_unique<LatencyPanel> (winCtx, *lat, isStandalone(), info, setBuf), rail.menuBtn);
 }
 
 void MidiSkyEditor::showAbout()
 {
-    const auto text = U8 ("MidiCat 1.4: visualizador de escalas, acordes, notas y pentagrama, con pianos, metrónomo, grabadora MIDI y piano roll.\n\n"
+    const auto text = U8 ("MidiCat 1.5: visualizador de escalas, acordes, notas y pentagrama, con pianos, metrónomo, grabadora MIDI y piano roll.\n\n"
                           "Piano de cola: Salamander Grand Piano de Alexander Holm (CC BY 3.0).\n"
                           "Piano de concierto: Splendid Grand Piano, muestras de dominio público de Akai.\n"
                           "Piano eléctrico: jRhodes3d de Jeff Learman (CC BY 4.0), github.com/sfzinstruments/jlearman.jRhodes3d\n"
                           "Notación: basada en la fuente Bravura de Steinberg (SIL OFL).\n"
                           "Tipografías: Zen Kaku Gothic New, Jersey 10, Doto, VT323, Orbitron, Monoton, Press Start 2P y Sixtyfour (SIL OFL).\n"
                           "Hecho con JUCE (AGPLv3).");
-    showPopover ("acerca", "Acerca de MidiCat", std::make_unique<TextPanel> (ctx, text, 520), rail.menuBtn);
+    showPopover ("acerca", "Acerca de MidiCat", std::make_unique<TextPanel> (winCtx, text, 520), rail.menuBtn);
 }
 
 //==============================================================================
@@ -1638,13 +1749,13 @@ void MidiSkyEditor::showAbout()
 void MidiSkyEditor::showMetronomePanel (Component& anchor)
 {
     showPopover ("metro", U8 ("Metrónomo"),
-                 std::make_unique<MetronomePanel> (ctx, *prefs, proc.metroSettings, proc.metronome, ! isStandalone(), [this] { proc.applyPrefs(); }),
+                 std::make_unique<MetronomePanel> (winCtx, *prefs, proc.metroSettings, proc.metronome, ! isStandalone(), [this] { proc.applyPrefs(); }),
                  anchor);
 }
 
 void MidiSkyEditor::showRecordingsPanel (Component& anchor)
 {
-    auto panel = std::make_unique<RecordingsPanel> (ctx, *prefs, proc.recorder, proc.metroSettings, [this] { proc.applyPrefs(); });
+    auto panel = std::make_unique<RecordingsPanel> (winCtx, *prefs, proc.recorder, proc.metroSettings, [this] { proc.applyPrefs(); });
     panel->onPlay = [this] (const File& f) { clipPlayer.play (f); };
     panel->onStopPlay = [this] { clipPlayer.stop(); };
     panel->isPlaying = [this] { return clipPlayer.isPlaying(); };
@@ -1656,7 +1767,7 @@ void MidiSkyEditor::showRecordingsPanel (Component& anchor)
 void MidiSkyEditor::showPluginsPanel (Component& anchor)
 {
     if (proc.host == nullptr) return;
-    auto panel = std::make_unique<PluginsPanel> (ctx, *proc.host,
+    auto panel = std::make_unique<PluginsPanel> (winCtx, *proc.host,
                                                  [this] { openHostedWindow(); },
                                                  [this] { if (proc.host != nullptr) proc.host->unload(); });
     auto* raw = panel.get();
@@ -1673,19 +1784,9 @@ void MidiSkyEditor::openPianoRoll (File f)
     clipPlayer.stop();
     if (rollWindow == nullptr)
     {
-        rollWindow = std::make_unique<PianoRollWindow> (ctx, proc.uiKeyboard, look);
-        rollWindow->roll().onConvertToAudio = [this] (const File& midi)
-        {
-            if (proc.recorder.isBouncing()) { proc.recorder.cancelBounce(); if (rollWindow) rollWindow->roll().setStatus (U8 ("Se canceló el paso a audio")); return; }
-            const bool ok = proc.recorder.startBounce (midi);
-            if (rollWindow) rollWindow->roll().setStatus (ok ? U8 ("Pasando a audio con el sonido elegido (se oye mientras)…")
-                                                             : U8 ("No se pudo pasar a audio (¿estás grabando?)"));
-        };
-        rollWindow->roll().audioProgress = [this]
-        {
-            if (rollWindow == nullptr || ! proc.recorder.isBouncing()) return -1.0f;
-            return proc.recorder.bouncingFile() == MidiRecorder::audioFileFor (rollWindow->roll().getFile()) ? proc.recorder.bounceProgress() : -1.0f;
-        };
+        rollWindow = std::make_unique<PianoRollWindow> (winCtx, proc.uiKeyboard, look);
+        auto* metro = &proc.metronome;
+        rollWindow->roll().onMetroClick = [metro] (bool accent) { metro->clickNow (accent); };
         Component::SafePointer<MidiSkyEditor> safe (this);
         rollWindow->onClose = [safe]
         {
@@ -1736,24 +1837,7 @@ void MidiSkyEditor::openHostedWindow()
 
 void MidiSkyEditor::saveLayoutPreset (const String& name)
 {
-    LayoutPreset l;
-    l.name = name;
-    for (auto* s : sections())
-    {
-        auto f = prefs->floats[s->id];
-        f.floating = s->floating;
-        if (s->floating)
-            if (auto* w = windows[s->id].get())
-            {
-                f.collapsed = w->shell().isCollapsed();
-                if (! f.collapsed) f.bounds = w->getBounds();
-            }
-        l.floats[s->id] = f;
-    }
-    l.transparent = prefs->transparent;
-    l.hideParams = prefs->hideParams;
-    l.editorW = getWidth();
-    l.editorH = getHeight();
+    const auto l = currentLayout (name);
     bool replaced = false;
     for (auto& e : prefs->layouts) if (e.name == name) { e = l; replaced = true; }
     if (! replaced) prefs->layouts.push_back (l);
@@ -1907,26 +1991,7 @@ void MidiSkyEditor::showDegreeInputPanel()
 {
     Component::SafePointer<MidiSkyEditor> safe (this);
     auto lastPad = [safe]() -> int { return safe != nullptr ? safe->proc.lastNoteEvent.load() : 0; };
-    showPopover ("gradosTeclas", "Teclas y pads para los grados", std::make_unique<DegreeInputPanel> (ctx, *prefs, lastPad), degrees);
-}
-
-void MidiSkyEditor::avoidForTab (int tab)
-{
-    if (popover == nullptr) return;
-    Section* target = nullptr;
-    switch (tab)
-    {
-        case 1: target = &keyboard; break;
-        case 2: target = &screen; break;
-        case 3: target = &degrees; break;
-        case 4: target = &circle; break;
-        case 5: target = &score; break;
-        default: break;
-    }
-    if (target != nullptr && ! target->floating && target->isShowing())
-        popover->setAvoid (getLocalArea (target, target->getLocalBounds()));
-    else
-        popover->setAvoid ({});
+    showPopover ("gradosTeclas", "Teclas y pads para los grados", std::make_unique<DegreeInputPanel> (winCtx, *prefs, lastPad), degrees);
 }
 
 void MidiSkyEditor::stopPreview()

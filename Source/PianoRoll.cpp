@@ -119,15 +119,17 @@ PianoRoll::PianoRoll (UiContext& c, MidiKeyboardState& k)
       dupBtn (c, "dup", U8 ("Duplicar (") + cmdName() + "+D)"),
       undoBtn (c, "undo", U8 ("Deshacer (") + cmdName() + "+Z)"),
       redoBtn (c, "redo", U8 ("Rehacer (") + cmdName() + "+Shift+Z)"),
-      playBtn (c, "play", U8 ("Reproducir / detener (barra espaciadora)"))
+      playBtn (c, "play", U8 ("Reproducir / detener (barra espaciadora)")),
+      metroBtn (c, "metro", U8 ("Metrónomo al reproducir (para guiarte con el tiempo)"))
 {
     setOpaque (true);
     setWantsKeyboardFocus (true);
     dragOut = std::make_unique<DragOut> (*this, false);
     audioOut = std::make_unique<DragOut> (*this, true);
-    for (Component* comp : std::initializer_list<Component*> { &drawBtn, &gridBtn, &quantBtn, &splitBtn, &dupBtn, &undoBtn, &redoBtn, &playBtn, audioOut.get(), dragOut.get(), &hbar, &vbar })
+    for (Component* comp : std::initializer_list<Component*> { &drawBtn, &gridBtn, &quantBtn, &splitBtn, &dupBtn, &undoBtn, &redoBtn, &playBtn, &metroBtn, dragOut.get(), &hbar, &vbar })
         addAndMakeVisible (comp);
-    for (auto* b : { &drawBtn, &gridBtn, &quantBtn, &splitBtn, &dupBtn, &undoBtn, &redoBtn, &playBtn })
+    addChildComponent (audioOut.get());   // pasar a audio ya no se ofrece
+    for (auto* b : { &drawBtn, &gridBtn, &quantBtn, &splitBtn, &dupBtn, &undoBtn, &redoBtn, &playBtn, &metroBtn })
         b->setWantsKeyboardFocus (false);
 
     drawBtn.onClick  = [this] { setDraw (! drawMode); };
@@ -138,6 +140,8 @@ PianoRoll::PianoRoll (UiContext& c, MidiKeyboardState& k)
     undoBtn.onClick  = [this] { undo(); };
     redoBtn.onClick  = [this] { redo(); };
     playBtn.onClick  = [this] { togglePlay(); };
+    metroBtn.setActive (metroOn);
+    metroBtn.onClick = [this] { metroOn = ! metroOn; metroBtn.setActive (metroOn); };
     gridBtn.setLabel (gridName());
 
     hbar.addListener (this);
@@ -637,8 +641,9 @@ void PianoRoll::resized()
     place (undoBtn, 46); place (redoBtn, 46);
     x += 8;
     place (playBtn, 46);
+    place (metroBtn, 46);
     dragOut->setBounds ((int) w - 10 - 170, y, 170, h);
-    audioOut->setBounds (dragOut->getX() - 8 - 160, y, 160, h);
+    audioOut->setBounds (dragOut->getX(), y, 0, h);
 
     const auto g = gridArea();
     hbar.setBounds ((int) g.getX(), getHeight() - (int) sbW, (int) g.getWidth(), (int) sbW);
@@ -663,8 +668,8 @@ void PianoRoll::paint (Graphics& g)
 
     // Estado
     {
-        const float sx = (float) playBtn.getRight() + 14.0f;
-        auto sr = Rectangle<float> (sx, 10.0f, (float) audioOut->getX() - sx - 10.0f, 42.0f);
+        const float sx = (float) metroBtn.getRight() + 14.0f;
+        auto sr = Rectangle<float> (sx, 10.0f, (float) dragOut->getX() - sx - 10.0f, 42.0f);
         g.setColour (pal.dim);
         g.setFont (smallFont);
         g.drawFittedText (status, sr.toNearestInt(), Justification::centredLeft, 2);
@@ -1221,6 +1226,7 @@ void PianoRoll::mouseMove (const MouseEvent& e)
 void PianoRoll::mouseWheelMove (const MouseEvent& e, const MouseWheelDetails& w)
 {
     // Proporcional al movimiento: suave con trackpad y con rueda
+    // Con el trackpad, la barra de abajo se mueve hacia donde mueves los dedos
     const float dy = w.deltaY * (w.isReversed ? -1.0f : 1.0f);
     const float dx = w.deltaX * (w.isReversed ? -1.0f : 1.0f);
     const auto g = gridArea();
@@ -1319,6 +1325,7 @@ void PianoRoll::togglePlay()
         std::sort (playEvents.begin(), playEvents.end(), [] (const Ev& a, const Ev& b) { return a.t < b.t || (a.t == b.t && ! a.on && b.on); });
         playNext = 0;
         held.fill (0);
+        nextClickBeat = std::ceil (playFromBeat - 1.0e-6);
         playStartMs.store (Time::getMillisecondCounterHiRes() + 40.0);
         playing.store (true);
     }
@@ -1345,6 +1352,14 @@ void PianoRoll::hiResTimerCallback()
 {
     const ScopedLock sl (playLock);
     const double t = (Time::getMillisecondCounterHiRes() - playStartMs.load()) / 1000.0;
+    // Metrónomo: un clic en cada tiempo (el fuerte al empezar cada compás)
+    const double head = playFromBeat + t * bpm / 60.0;
+    while (t >= 0.0 && head + 1.0e-6 >= nextClickBeat)
+    {
+        if (metroOn && onMetroClick)
+            onMetroClick (((int) std::llround (nextClickBeat)) % jmax (1, beatsPerBar) == 0);
+        nextClickBeat += 1.0;
+    }
     while (playNext < playEvents.size() && playEvents[playNext].t <= t)
     {
         const auto& e = playEvents[playNext++];
@@ -1383,9 +1398,7 @@ void PianoRoll::timerCallback()
     // Chip de audio: se repinta solo si cambia (progreso, listo o viejo)
     if (++audioTick % 6 == 0 || audioState >= 0)
     {
-        const float p = audioOut->progress();
-        const int st = p >= 0.0f ? roundToInt (p * 100.0f) : (audioOut->target().existsAsFile() ? -1 : -3);
-        if (st != audioState) { audioState = st; audioOut->repaint(); }
+        audioState = -2;
     }
 }
 

@@ -1,4 +1,5 @@
 #include "InterfaceEditor.h"
+#include "Sections.h"
 
 using namespace juce;
 
@@ -235,7 +236,7 @@ PrecisePicker::PrecisePicker (UiContext& c)
         hue = col.getHue(); sat = col.getSaturation(); val = col.getBrightness();
         current = col;
         repaint();
-        syncFields();
+        syncFields (true);
         if (onColour) onColour (current);
     };
     hex.onReturnKey = applyHex;
@@ -259,7 +260,7 @@ void PrecisePicker::setColour (Colour c)
     repaint();
 }
 
-void PrecisePicker::syncFields()
+void PrecisePicker::syncFields (bool fromHex)
 {
     const auto& pal = ctx.vis.pal;
     hex.setColour (TextEditor::backgroundColourId, pal.night ? pal.plate.brighter (0.12f) : pal.plate);
@@ -267,7 +268,9 @@ void PrecisePicker::syncFields()
     hex.setColour (TextEditor::focusedOutlineColourId, pal.accent);
     hex.setColour (TextEditor::textColourId, pal.text);
     hex.setColour (CaretComponent::caretColourId, pal.accent);
-    if (! hex.hasKeyboardFocus (false))
+    // Si el cambio vino de otro lado (cuadro, muestras, RGB) el texto se actualiza siempre:
+    // así al salir del campo no regresa el color viejo
+    if (! fromHex || ! hex.hasKeyboardFocus (false))
         hex.setText ("#" + current.toDisplayString (false), false);
     rBox.setValue (current.getRed());
     gBox.setValue (current.getGreen());
@@ -595,26 +598,293 @@ void OptionsList::paint (Graphics& g)
 }
 
 //==============================================================================
-// Piezas internas del panel
+// Piezas internas de los paneles
 //==============================================================================
 namespace
 {
+    // Página: una lista de opciones que se desplaza si no cabe
+    class Page : public Component
+    {
+    public:
+        Page (UiContext& c, std::unique_ptr<OptionsList> l) : ctx (c), list (std::move (l))
+        {
+            view.setViewedComponent (list.get(), false);
+            view.setScrollBarsShown (true, false);
+            view.setScrollBarThickness (7);
+            addAndMakeVisible (view);
+        }
+        void resized() override
+        {
+            view.setBounds (getLocalBounds());
+            const int w = getWidth() - 12;
+            const int h = list->layout (w);
+            list->setTopLeftPosition (0, 0);
+            if (onHeight && h != lastH) { lastH = h; onHeight (h); }
+        }
+        int naturalHeight (int width) { return list->layout (width - 12); }
+        std::function<void (int)> onHeight;   // cuando crece o se encoge (por ejemplo al abrir el selector de color)
+    private:
+        UiContext& ctx;
+        std::unique_ptr<OptionsList> list;
+        Viewport view;
+        int lastH = -1;
+    };
+
+    void relayoutPage (Component* c)
+    {
+        if (auto* pg = c->findParentComponentOfClass<Page>())
+            pg->resized();
+    }
+
+    // Colores en un renglón: "Auto", las muestras y "+" para el selector preciso
+    class SwatchRow : public Component, public HeightForWidth
+    {
+    public:
+        SwatchRow (UiContext& c, std::function<Colour()> g, std::function<Colour()> b, std::function<void (Colour)> s, String autoText = "Auto")
+            : ctx (c), get (std::move (g)), base (std::move (b)), set (std::move (s)), autoLabel (std::move (autoText)), picker (c)
+        {
+            addChildComponent (picker);
+            picker.onColour = [this] (Colour col) { if (set) set (col); repaint(); };
+        }
+        int heightFor (int width) override
+        {
+            layoutDots (width);
+            return dotsH + (open ? 12 + picker.getHeight() : 0);
+        }
+        void resized() override
+        {
+            layoutDots (getWidth());
+            picker.setBounds (0, dotsH + 12, getWidth(), 292);
+            picker.setVisible (open);
+        }
+        void paint (Graphics& g) override
+        {
+            const auto& pal = ctx.vis.pal;
+            const auto cur = get ? get() : Colour();
+            const auto& sw = swatches();
+            for (int i = 0; i < (int) items.size(); ++i)
+            {
+                auto r = items[(size_t) i];
+                const bool hov = i == hover;
+                if (i == 0)
+                {
+                    // Auto: el color del diseño
+                    const bool sel = cur.isTransparent();
+                    g.setColour (sel ? pal.accent : (pal.night ? pal.plate.brighter (0.12f) : pal.plate));
+                    g.fillRoundedRectangle (r, r.getHeight() * 0.5f);
+                    if (! sel) { g.setColour (pal.text.withAlpha (hov ? 0.32f : 0.14f)); g.drawRoundedRectangle (r.reduced (0.5f), r.getHeight() * 0.5f, 1.0f); }
+                    auto dot = r.reduced (5.0f).removeFromLeft (r.getHeight() - 10.0f);
+                    g.setColour (base ? base() : pal.accent);
+                    g.fillEllipse (dot);
+                    g.setColour (sel ? pal.accentInk : pal.text);
+                    g.setFont (ctx.fonts.ui (13.0f, sel ? 2 : 1));
+                    g.drawText (autoLabel, r.withTrimmedLeft (r.getHeight() - 2.0f), Justification::centredLeft, false);
+                    continue;
+                }
+                if (i == (int) items.size() - 1)
+                {
+                    // + : selector preciso
+                    g.setColour (open ? pal.accent : (pal.night ? pal.plate.brighter (0.12f) : pal.plate));
+                    g.fillEllipse (r);
+                    g.setColour (open ? pal.accentInk : pal.text.withAlpha (hov ? 0.9f : 0.6f));
+                    draw::icon (g, open ? "minus" : "plus", r.reduced (4.0f), open ? pal.accentInk : pal.text.withAlpha (0.75f), 1.6f);
+                    continue;
+                }
+                const auto c = sw[(size_t) (i - 1)];
+                g.setColour (c);
+                g.fillEllipse (r.reduced (hov ? 0.0f : 1.0f));
+                g.setColour (Colours::black.withAlpha (0.18f));
+                g.drawEllipse (r.reduced (1.0f), 1.0f);
+                if (! cur.isTransparent() && cur.getARGB() == c.getARGB())
+                {
+                    g.setColour (pal.text);
+                    g.drawEllipse (r.expanded (2.5f), 1.8f);
+                }
+            }
+            // El color propio que no es una muestra
+            if (! cur.isTransparent() && std::none_of (sw.begin(), sw.end(), [&] (Colour c) { return c.getARGB() == cur.getARGB(); }) && ! items.empty())
+            {
+                auto r = items.back();
+                g.setColour (cur);
+                g.fillEllipse (r.withSizeKeepingCentre (8.0f, 8.0f).translated (r.getWidth() * 0.32f, -r.getHeight() * 0.32f));
+            }
+        }
+        void mouseMove (const MouseEvent& e) override
+        {
+            int h = -1;
+            for (int i = 0; i < (int) items.size(); ++i) if (items[(size_t) i].expanded (2.0f).contains (e.position)) h = i;
+            if (h != hover) { hover = h; setMouseCursor (h >= 0 ? MouseCursor::PointingHandCursor : MouseCursor::NormalCursor); repaint(); }
+        }
+        void mouseExit (const MouseEvent&) override { hover = -1; repaint(); }
+        void mouseUp (const MouseEvent& e) override
+        {
+            for (int i = 0; i < (int) items.size(); ++i)
+                if (items[(size_t) i].expanded (2.0f).contains (e.position))
+                {
+                    if (i == 0) { if (set) set (Colour()); }
+                    else if (i == (int) items.size() - 1)
+                    {
+                        open = ! open;
+                        const auto cur = get ? get() : Colour();
+                        picker.setColour (cur.isTransparent() && base ? base() : cur);
+                        resized();
+                        relayoutPage (this);
+                    }
+                    else if (set) set (swatches()[(size_t) (i - 1)]);
+                    repaint();
+                    return;
+                }
+        }
+    private:
+        void layoutDots (int width)
+        {
+            items.clear();
+            const float d = 24.0f, gap = 7.0f;
+            float x = 0.0f, y = 0.0f;
+            auto put = [&] (float w)
+            {
+                if (x > 0.0f && x + w > (float) width) { x = 0.0f; y += d + 8.0f; }
+                items.push_back ({ x, y, w, d });
+                x += w + gap;
+            };
+            put (draw::textWidth (ctx.fonts.ui (13.0f, 2), autoLabel) + d + 12.0f);
+            for (size_t i = 0; i < swatches().size(); ++i) put (d);
+            put (d);
+            dotsH = (int) std::ceil (y + d) + 2;
+        }
+        UiContext& ctx;
+        std::function<Colour()> get, base;
+        std::function<void (Colour)> set;
+        String autoLabel;
+        PrecisePicker picker;
+        std::vector<Rectangle<float>> items;
+        int dotsH = 26, hover = -1;
+        bool open = false;
+    };
+
+    // Una nota de texto
+    class NoteRow : public Component, public HeightForWidth
+    {
+    public:
+        NoteRow (UiContext& c, String t) : ctx (c), text (std::move (t)) {}
+        int heightFor (int width) override
+        {
+            AttributedString a; a.append (text, ctx.fonts.ui (13.0f, 1)); a.setWordWrap (AttributedString::byWord);
+            TextLayout tl; tl.createLayout (a, (float) width);
+            return (int) std::ceil (tl.getHeight()) + 2;
+        }
+        void paint (Graphics& g) override
+        {
+            g.setColour (ctx.vis.pal.dim);
+            g.setFont (ctx.fonts.ui (13.0f, 1));
+            g.drawFittedText (text, getLocalBounds(), Justification::topLeft, 4, 1.0f);
+        }
+    private:
+        UiContext& ctx;
+        String text;
+    };
+
+    // "Más ajustes": abre o cierra las opciones de menos uso
+    class MoreRow : public Component
+    {
+    public:
+        MoreRow (UiContext& c, bool isOpen, std::function<void()> fn) : ctx (c), open (isOpen), onClick (std::move (fn))
+        { setMouseCursor (MouseCursor::PointingHandCursor); }
+        void paint (Graphics& g) override
+        {
+            const auto& pal = ctx.vis.pal;
+            g.setColour (pal.text.withAlpha (0.08f));
+            g.fillRect (0, 0, getWidth(), 1);
+            auto r = getLocalBounds().toFloat().withTrimmedTop (4.0f);
+            g.setColour (hover ? pal.accent : pal.text.withAlpha (0.8f));
+            g.setFont (ctx.fonts.ui (14.0f, 2));
+            g.drawText (open ? U8 ("Menos ajustes") : U8 ("Más ajustes"), r, Justification::centredLeft, false);
+            const float tw = draw::textWidth (ctx.fonts.ui (14.0f, 2), open ? U8 ("Menos ajustes") : U8 ("Más ajustes"));
+            Graphics::ScopedSaveState ss (g);
+            auto ir = Rectangle<float> (tw + 6.0f, r.getCentreY() - 8.0f, 16.0f, 16.0f);
+            if (open) g.addTransform (AffineTransform::rotation (MathConstants<float>::pi, ir.getCentreX(), ir.getCentreY()));
+            draw::icon (g, "chev", ir, hover ? pal.accent : pal.text.withAlpha (0.8f), 1.8f);
+        }
+        void mouseEnter (const MouseEvent&) override { hover = true; repaint(); }
+        void mouseExit (const MouseEvent&) override { hover = false; repaint(); }
+        void mouseUp (const MouseEvent& e) override { if (getLocalBounds().contains (e.getPosition()) && onClick) onClick(); }
+    private:
+        UiContext& ctx;
+        bool open, hover = false;
+        std::function<void()> onClick;
+    };
+
+    // Un botón dentro de la lista
+    class ButtonRow : public Component
+    {
+    public:
+        ButtonRow (UiContext& c, String icon, String text, std::function<void()> fn) : btn (c, icon, text, text)
+        {
+            btn.onClick = std::move (fn);
+            addAndMakeVisible (btn);
+        }
+        void resized() override { btn.setBounds (getLocalBounds().withWidth (jmin (getWidth(), 260))); }
+        PushButton btn;
+    };
+
+    // Un aparato chiquito con los colores de un estilo o tema (para elegir viendo)
+    void drawMiniDevice (Graphics& g, UiContext& ctx, Rectangle<float> dev, const Skin& s)
+    {
+        draw::device (g, dev, s, 0.3f, false);
+        auto in = dev.reduced (dev.getWidth() * 0.08f, dev.getHeight() * 0.13f);
+        auto top = in.removeFromTop (in.getHeight() * 0.6f);
+        auto circ = top.removeFromRight (top.getHeight());
+        top.removeFromRight (in.getWidth() * 0.05f);
+        // Pantalla
+        const auto sl = pieces::screenLook (s);
+        const auto sp = draw::shapePath (top, s.pieces.scrShape == 3 ? 3 : (s.pieces.scrShape == 2 ? 2 : (s.pieces.scrShape == 1 ? 1 : 0)), 4.0f);
+        g.setColour (sl.bg);
+        g.fillPath (sp);
+        const float th = top.getHeight() * 0.56f;
+        g.setColour (sl.text);
+        g.setFont (sl.font == 0 ? (s.pixelScreen ? ctx.fonts.pixel (th * 1.1f) : ctx.fonts.ui (th, 2)) : ctx.fonts.display (sl.font, s.pixelScreen, th));
+        g.drawText (Fonts::displayText (sl.font, "Dm"), top, Justification::centred, false);
+        // Círculo
+        auto c = circ.reduced (1.0f);
+        g.setColour (s.plate.darker (s.night ? 0.0f : 0.04f));
+        g.fillEllipse (c);
+        Path wedge;
+        wedge.addPieSegment (c, -0.27f, 0.27f, 0.45f);
+        g.setColour (pieces::circleColour (s));
+        g.fillPath (wedge);
+        g.setColour (s.caps[0]);
+        g.fillEllipse (c.reduced (c.getWidth() * 0.29f));
+        // Teclas
+        auto keys = in.withTrimmedTop (in.getHeight() * 0.18f);
+        const float kw = keys.getWidth() / 7.0f;
+        for (int i = 0; i < 7; ++i)
+        {
+            g.setColour (i == 2 || i == 4 ? s.noteColour (i == 2 ? 64 : 67) : s.keyW);
+            g.fillRoundedRectangle (keys.getX() + (float) i * kw + 0.8f, keys.getY(), kw - 1.6f, keys.getHeight(), 1.5f);
+        }
+        for (int i : { 1, 2, 4, 5, 6 })
+        {
+            g.setColour (s.keyB);
+            g.fillRoundedRectangle (keys.getX() + (float) i * kw - kw * 0.28f, keys.getY(), kw * 0.56f, keys.getHeight() * 0.55f, 1.2f);
+        }
+    }
+
     // Los estilos, con una muestra chiquita de cada uno
     class LookTiles : public Component, public HeightForWidth
     {
     public:
-        LookTiles (UiContext& c, Prefs& p) : ctx (c), prefs (p) {}
+        LookTiles (UiContext& c, Prefs& p, std::function<void()> changed) : ctx (c), prefs (p), onChanged (std::move (changed)) {}
         int heightFor (int width) override
         {
-            const int cols = jmax (1, width / 112);
+            const int cols = jmax (1, width / 100);
             const int n = (int) looks().size();
-            return ((n + cols - 1) / cols) * 98;
+            return ((n + cols - 1) / cols) * 86;
         }
         Rectangle<float> tile (int i) const
         {
-            const int cols = jmax (1, getWidth() / 112);
-            const float w = ((float) getWidth() - 10.0f * (float) (cols - 1)) / (float) cols;
-            return { (float) (i % cols) * (w + 10.0f), (float) (i / cols) * 98.0f, w, 90.0f };
+            const int cols = jmax (1, getWidth() / 100);
+            const float w = ((float) getWidth() - 8.0f * (float) (cols - 1)) / (float) cols;
+            return { (float) (i % cols) * (w + 8.0f), (float) (i / cols) * 86.0f, w, 80.0f };
         }
         void paint (Graphics& g) override
         {
@@ -624,35 +894,22 @@ namespace
             {
                 auto r = tile (i);
                 const Skin s = prefs.palette (looks()[(size_t) i].id);
-                auto dev = r.withTrimmedBottom (22.0f).reduced (3.0f, 3.0f);
-                draw::device (g, dev, s, 0.35f, false);
-                auto scr = dev.reduced (dev.getWidth() * 0.26f, dev.getHeight() * 0.2f).withTrimmedBottom (dev.getHeight() * 0.22f);
-                g.setColour (s.screen);
-                g.fillRoundedRectangle (scr, 4.0f);
-                g.setColour (s.scrText);
-                g.setFont (s.pixelScreen ? ctx.fonts.pixel (17.0f) : ctx.fonts.ui (15.0f, 2));
-                g.drawText ("Dm", scr, Justification::centred, false);
-                auto keys = dev.reduced (8.0f, 0.0f).withTrimmedTop (dev.getHeight() * 0.74f).withTrimmedBottom (6.0f);
-                const float kw = keys.getWidth() / 8.0f;
-                for (int kk = 0; kk < 8; ++kk)
-                {
-                    g.setColour (kk == 2 || kk == 5 ? s.lit : s.keyW);
-                    g.fillRoundedRectangle (keys.getX() + (float) kk * kw + 1.0f, keys.getY(), kw - 2.0f, keys.getHeight(), 2.0f);
-                }
+                auto dev = r.withTrimmedBottom (20.0f).reduced (3.0f, 3.0f);
+                drawMiniDevice (g, ctx, dev, s);
                 g.setColour (i == cur ? pal.accent : pal.text.withAlpha (i == hover ? 0.4f : 0.12f));
-                g.drawRoundedRectangle (dev.expanded (2.5f), 11.0f, i == cur ? 2.5f : 1.0f);
+                g.drawRoundedRectangle (dev.expanded (2.5f), 10.0f, i == cur ? 2.5f : 1.0f);
                 g.setColour (i == cur ? pal.text : pal.dim);
-                g.setFont (ctx.fonts.ui (13.5f, i == cur ? 2 : 1));
-                g.drawText (looks()[(size_t) i].name, r.withTop (r.getBottom() - 20.0f), Justification::centred, false);
+                g.setFont (ctx.fonts.ui (13.0f, i == cur ? 2 : 1));
+                g.drawText (looks()[(size_t) i].name, r.withTop (r.getBottom() - 18.0f), Justification::centred, false);
             }
         }
         void mouseMove (const MouseEvent& e) override
         {
             int h = -1;
             for (int i = 0; i < (int) looks().size(); ++i) if (tile (i).contains (e.position)) h = i;
-            if (h != hover) { hover = h; repaint(); }
-            if (h >= 0) setTooltip (looks()[(size_t) h].description);
+            if (h != hover) { hover = h; setMouseCursor (h >= 0 ? MouseCursor::PointingHandCursor : MouseCursor::NormalCursor); repaint(); }
         }
+        void mouseExit (const MouseEvent&) override { hover = -1; repaint(); }
         void mouseUp (const MouseEvent& e) override
         {
             for (int i = 0; i < (int) looks().size(); ++i)
@@ -662,24 +919,77 @@ namespace
                     prefs.keyStyle = -1;   // las teclas del estilo
                     prefs.save();
                     repaint();
+                    if (onChanged) onChanged();
                     return;
                 }
         }
-        void setTooltip (const String& t) { tip = t; }
     private:
         UiContext& ctx;
         Prefs& prefs;
+        std::function<void()> onChanged;
         int hover = -1;
-        String tip;
+    };
+
+    // Temas listos de un grupo (un clic y se pone todo)
+    class ThemeTiles : public Component, public HeightForWidth
+    {
+    public:
+        ThemeTiles (UiContext& c, Prefs& p, std::vector<const ThemePreset*> t, std::function<void (const ThemePreset&)> fn)
+            : ctx (c), prefs (p), items (std::move (t)), apply (std::move (fn)) {}
+        int heightFor (int width) override
+        {
+            const int cols = jmax (2, width / 100);
+            return (((int) items.size() + cols - 1) / cols) * 84;
+        }
+        Rectangle<float> tile (int i) const
+        {
+            const int cols = jmax (2, getWidth() / 100);
+            const float w = ((float) getWidth() - 8.0f * (float) (cols - 1)) / (float) cols;
+            return { (float) (i % cols) * (w + 8.0f), (float) (i / cols) * 84.0f, w, 78.0f };
+        }
+        void paint (Graphics& g) override
+        {
+            const auto& pal = ctx.vis.pal;
+            for (int i = 0; i < (int) items.size(); ++i)
+            {
+                auto r = tile (i);
+                const auto s = prefs.paletteFor (*items[(size_t) i]);
+                auto dev = r.withTrimmedBottom (20.0f).reduced (3.0f);
+                drawMiniDevice (g, ctx, dev, s);
+                g.setColour (pal.text.withAlpha (i == hover ? 0.45f : 0.12f));
+                g.drawRoundedRectangle (dev.expanded (2.5f), 10.0f, i == hover ? 2.0f : 1.0f);
+                g.setColour (i == hover ? pal.text : pal.dim);
+                g.setFont (ctx.fonts.ui (13.0f, i == hover ? 2 : 1));
+                g.drawFittedText (items[(size_t) i]->name, r.withTop (r.getBottom() - 18.0f).toNearestInt(), Justification::centred, 1, 0.8f);
+            }
+        }
+        void mouseMove (const MouseEvent& e) override
+        {
+            int h = -1;
+            for (int i = 0; i < (int) items.size(); ++i) if (tile (i).contains (e.position)) h = i;
+            if (h != hover) { hover = h; setMouseCursor (h >= 0 ? MouseCursor::PointingHandCursor : MouseCursor::NormalCursor); repaint(); }
+        }
+        void mouseExit (const MouseEvent&) override { hover = -1; repaint(); }
+        void mouseUp (const MouseEvent& e) override
+        {
+            for (int i = 0; i < (int) items.size(); ++i)
+                if (tile (i).contains (e.position)) { if (apply) apply (*items[(size_t) i]); return; }
+        }
+    private:
+        UiContext& ctx;
+        Prefs& prefs;
+        std::vector<const ThemePreset*> items;
+        std::function<void (const ThemePreset&)> apply;
+        int hover = -1;
     };
 
     // Tus temas guardados (se aplican con un clic) y el botón para guardar uno nuevo
     class ThemesBox : public Component, public HeightForWidth
     {
     public:
-        ThemesBox (UiContext& c, Prefs& p, std::function<void()> applied)
-            : ctx (c), prefs (p), onApplied (std::move (applied)),
-              saveBtn (c, "save", U8 ("Guarda estilo, colores, formas y movimiento como un tema tuyo"), "Guardar tema"),
+        ThemesBox (UiContext& c, Prefs& p, PanelHooks h, std::function<void()> applied)
+            : ctx (c), prefs (p), hooks (std::move (h)), onApplied (std::move (applied)),
+              saveBtn (c, "save", U8 ("Guarda todo como un tema tuyo: estilo, colores, cada pieza, movimiento, teclas y acomodo"), "Guardar tema"),
               okBtn (c, "save", "Guardar", "Guardar"), cancelBtn (c, "close", "Cancelar")
         {
             addAndMakeVisible (saveBtn);
@@ -694,12 +1004,13 @@ namespace
             {
                 const auto name = nameEditor.getText().trim();
                 if (name.isEmpty()) return;
-                auto t = prefs.captureTheme (name);
+                auto t = hooks.captureTheme ? hooks.captureTheme (name) : prefs.captureTheme (name);
                 bool replaced = false;
                 for (auto& th : prefs.themes) if (th.name == name) { th = t; replaced = true; }
                 if (! replaced) prefs.themes.push_back (t);
                 prefs.save (false);
                 setNaming (false);
+                if (onApplied) onApplied();
             };
             nameEditor.onReturnKey = commit;
             okBtn.onClick = commit;
@@ -708,7 +1019,6 @@ namespace
         }
         void setNaming (bool n)
         {
-            naming = n;
             nameEditor.setVisible (n); okBtn.setVisible (n); cancelBtn.setVisible (n); saveBtn.setVisible (! n);
             const auto& pal = ctx.vis.pal;
             nameEditor.setColour (TextEditor::backgroundColourId, pal.night ? pal.plate.brighter (0.1f) : Colours::white);
@@ -726,8 +1036,9 @@ namespace
         }
         Rectangle<float> chip (int i) const
         {
-            const float w = 150.0f, gap = 8.0f;
-            const int perRow = jmax (1, (int) (((float) getWidth() + gap) / (w + gap)));
+            const float gap = 8.0f;
+            const int perRow = jmax (1, (int) (((float) getWidth() + gap) / (140.0f + gap)));
+            const float w = ((float) getWidth() - gap * (float) (perRow - 1)) / (float) perRow;
             return { (float) (i % perRow) * (w + gap), 50.0f + (float) (i / perRow) * 44.0f, w, 38.0f };
         }
         int heightFor (int width) override
@@ -738,9 +1049,9 @@ namespace
         }
         void resized() override
         {
-            saveBtn.setBounds (0, 0, 190, 40);
-            nameEditor.setBounds (0, 0, getWidth() - 160, 40);
-            okBtn.setBounds (getWidth() - 152, 0, 110, 40);
+            saveBtn.setBounds (0, 0, jmin (getWidth(), 190), 40);
+            nameEditor.setBounds (0, 0, getWidth() - 150, 40);
+            okBtn.setBounds (getWidth() - 144, 0, 100, 40);
             cancelBtn.setBounds (getWidth() - 40, 0, 40, 40);
         }
         void paint (Graphics& g) override
@@ -749,7 +1060,7 @@ namespace
             if (prefs.themes.empty())
             {
                 g.setColour (pal.dim);
-                g.setFont (ctx.fonts.ui (13.5f, 1));
+                g.setFont (ctx.fonts.ui (13.0f, 1));
                 g.drawText (U8 ("Aquí aparecen los temas que guardes."), Rectangle<float> (0.0f, 48.0f, (float) getWidth(), 24.0f), Justification::centredLeft, true);
             }
             for (int i = 0; i < (int) prefs.themes.size(); ++i)
@@ -760,12 +1071,10 @@ namespace
                 g.fillRoundedRectangle (r, r.getHeight() * shapedRadius (pal, 0.3f));
                 auto in = r.reduced (10.0f, 0.0f);
                 auto x = in.removeFromRight (16.0f);
-                const auto s = prefs.palette (t.look);
-                const auto body = t.uiTint.isTransparent() ? s.body2 : t.uiTint;
-                const auto acc = t.uiAccent.isTransparent() ? s.accent : t.uiAccent;
-                auto dots = in.removeFromLeft (28.0f);
-                g.setColour (body); g.fillEllipse (dots.getX(), dots.getCentreY() - 7.0f, 14.0f, 14.0f);
-                g.setColour (acc);  g.fillEllipse (dots.getX() + 10.0f, dots.getCentreY() - 7.0f, 14.0f, 14.0f);
+                const auto s = prefs.paletteFor (t);
+                auto dots = in.removeFromLeft (30.0f);
+                g.setColour (s.body2); g.fillEllipse (dots.getX(), dots.getCentreY() - 7.0f, 14.0f, 14.0f);
+                g.setColour (s.accent); g.fillEllipse (dots.getX() + 10.0f, dots.getCentreY() - 7.0f, 14.0f, 14.0f);
                 const bool ask = confirmDelete == i;
                 g.setColour (ask ? Colour (0xffe5383b) : pal.text);
                 g.setFont (ctx.fonts.ui (13.5f, 1));
@@ -787,7 +1096,8 @@ namespace
                     return;
                 }
                 confirmDelete = -1;
-                prefs.applyTheme (prefs.themes[(size_t) i]);
+                const auto t = prefs.themes[(size_t) i];
+                if (hooks.applyTheme) hooks.applyTheme (t); else prefs.applyTheme (t);
                 if (onApplied) onApplied();
                 return;
             }
@@ -796,139 +1106,87 @@ namespace
     private:
         UiContext& ctx;
         Prefs& prefs;
+        PanelHooks hooks;
         std::function<void()> onApplied;
         PushButton saveBtn, okBtn, cancelBtn;
         TextEditor nameEditor;
-        bool naming = false;
         int confirmDelete = -1;
     };
 
-    // Muestra de cómo se ven las teclas
+    // Muestra de cómo se ven las teclas: se dibuja con el mismo código del teclado
     class KeysPreview : public Component
     {
     public:
         KeysPreview (UiContext& c, Prefs& p) : ctx (c), prefs (p) {}
         void paint (Graphics& g) override
         {
-            const auto& pal = ctx.vis.pal;
-            auto demo = getLocalBounds().toFloat();
-            draw::recess (g, demo, pal, 14.0f, pal.keyBed);
-            auto kr = demo.reduced (12.0f);
-            const int whites = 8;
-            const float ww = kr.getWidth() / (float) whites;
-            const Skin s = prefs.palette();
-            for (int i = 0; i < whites; ++i)
-            {
-                const bool lit = i == 0 || i == 2 || i == 4;
-                auto r = Rectangle<float> (kr.getX() + (float) i * ww + 2.0f, kr.getY() + kr.getHeight() * 0.32f, ww - 4.0f, kr.getHeight() * 0.68f);
-                g.setColour (lit ? s.noteColour (60 + i * 2) : s.keyW);
-                g.fillRoundedRectangle (r, jmin (ww * 0.42f, s.keyStyle == keysClasica ? 3.0f : 12.0f));
-            }
-            for (int i : { 1, 2, 4, 5, 6 })
-            {
-                const float x = kr.getX() + (float) i * ww;
-                g.setColour (i == 4 ? s.noteColour (66) : s.keyB);
-                if (s.keyStyle == keysBotones) g.fillEllipse (x - ww * 0.3f, kr.getY() + 4.0f, ww * 0.6f, ww * 0.6f);
-                else g.fillRoundedRectangle (x - ww * 0.28f, kr.getY() + 2.0f, ww * 0.56f, kr.getHeight() * 0.5f, 4.0f);
-            }
+            KeyboardSection::paintPreview (g, ctx, prefs.palette(), getLocalBounds().toFloat(), 0.62f);
         }
     private:
         UiContext& ctx;
         Prefs& prefs;
     };
 
-    // Un botón dentro de la lista
-    class ButtonRow : public Component
-    {
-    public:
-        ButtonRow (UiContext& c, String icon, String text, std::function<void()> fn) : btn (c, icon, text, text)
-        {
-            btn.onClick = std::move (fn);
-            addAndMakeVisible (btn);
-        }
-        void resized() override { btn.setBounds (getLocalBounds().withWidth (jmin (getWidth(), 300))); }
-        PushButton btn;
-    };
-
-    // Página: opciones y, debajo, sus colores (todo en una columna que se desplaza)
-    class Page : public Component
-    {
-    public:
-        Page (UiContext& c, std::unique_ptr<OptionsList> l, std::unique_ptr<ColourEditor> col)
-            : ctx (c), list (std::move (l)), colours (std::move (col))
-        {
-            stack.addAndMakeVisible (*list);
-            if (colours != nullptr) stack.addAndMakeVisible (*colours);
-            view.setViewedComponent (&stack, false);
-            view.setScrollBarsShown (true, false);
-            view.setScrollBarThickness (8);
-            addAndMakeVisible (view);
-        }
-        void resized() override
-        {
-            view.setBounds (getLocalBounds());
-            const int w = getWidth() - 14;
-            int h = list->layout (w);
-            list->setTopLeftPosition (0, 0);
-            if (colours != nullptr)
-            {
-                h += 6;
-                colourTop = h;
-                colours->setBounds (0, h + 30, w, 394);
-                h += 30 + 394 + 10;
-            }
-            stack.setSize (w, h);
-        }
-    private:
-        struct Stack : Component
-        {
-            Page* owner = nullptr;
-            void paint (Graphics& g) override
-            {
-                if (owner == nullptr || owner->colours == nullptr) return;
-                const auto& pal = owner->ctx.vis.pal;
-                g.setColour (pal.text.withAlpha (0.10f));
-                g.fillRect (0, owner->colourTop, getWidth(), 1);
-                g.setColour (pal.dim);
-                g.setFont (owner->ctx.fonts.ui (14.0f, 2));
-                g.drawText ("Colores", 0, owner->colourTop + 6, getWidth(), 20, Justification::centredLeft, false);
-            }
-        };
-        UiContext& ctx;
-        std::unique_ptr<OptionsList> list;
-        std::unique_ptr<ColourEditor> colours;
-        Stack stack;
-        Viewport view;
-        int colourTop = 0;
-        friend struct Stack;
-    public:
-        void parentHierarchyChanged() override { stack.owner = this; }
-    };
-
     String pct (float v) { return String (roundToInt (v * 100.0f)) + " %"; }
+
+    // Un color global cambia todo: se quitan los colores propios de cada pieza
+    void clearPieceColours (Prefs& P)
+    {
+        P.keyLit = Colour();
+        P.pieces.degColour = Colour();
+        P.pieces.cirColour = Colour();
+    }
 }
 
 //==============================================================================
-// El panel
+// Pestañas arriba
 //==============================================================================
-StringArray CustomizePanel::tabNames()
+Rectangle<float> TopTabs::item (int i) const
 {
-    return { "Estilo", "Teclas", "Pantalla", "Grados", U8 ("Círculo"), "Pentagrama", "Movimiento" };
+    const float w = (float) getWidth() / (float) jmax (1, names.size());
+    return { (float) i * w, 0.0f, w, (float) getHeight() };
 }
 
-static int lastCustomizeTab = 0;
-void CustomizePanel::setStartTab (int t) { lastCustomizeTab = jlimit (0, tabNames().size() - 1, t); }
-
-CustomizePanel::CustomizePanel (UiContext& c, Prefs& p, std::function<void()> openDegreeInput)
-    : ctx (c), prefs (p), openDegrees (std::move (openDegreeInput)), tabs (c, tabNames())
+void TopTabs::paint (Graphics& g)
 {
-    addAndMakeVisible (tabs);
-    tabs.onChange = [this] (int i) { showTab (i); };
-    setSize (620, 530);
-    tabs.setSelected (lastCustomizeTab);
-    showTab (lastCustomizeTab);
+    const auto& pal = ctx.vis.pal;
+    auto all = getLocalBounds().toFloat();
+    g.setColour (pal.night ? pal.plate.brighter (0.08f) : pal.plate.withAlpha (0.85f));
+    g.fillRoundedRectangle (all, all.getHeight() * shapedRadius (pal, 0.5f));
+    for (int i = 0; i < names.size(); ++i)
+    {
+        auto r = item (i).reduced (3.0f);
+        const float rad = r.getHeight() * shapedRadius (pal, 0.5f);
+        if (i == selected) { g.setColour (pal.accent); g.fillRoundedRectangle (r, rad); }
+        else if (i == hover) { g.setColour (pal.text.withAlpha (0.07f)); g.fillRoundedRectangle (r, rad); }
+        g.setColour (i == selected ? pal.accentInk : pal.text.withAlpha (0.85f));
+        g.setFont (ctx.fonts.ui (14.0f, i == selected ? 2 : 1));
+        g.drawText (names[i], r, Justification::centred, false);
+    }
 }
 
+void TopTabs::mouseMove (const MouseEvent& e)
+{
+    int h = -1;
+    for (int i = 0; i < names.size(); ++i) if (item (i).contains (e.position)) h = i;
+    if (h != hover) { hover = h; setMouseCursor (h >= 0 ? MouseCursor::PointingHandCursor : MouseCursor::NormalCursor); repaint(); }
+}
+
+void TopTabs::mouseUp (const MouseEvent& e)
+{
+    for (int i = 0; i < names.size(); ++i)
+        if (item (i).contains (e.position) && i != selected)
+        {
+            selected = i;
+            repaint();
+            if (onChange) onChange (i);
+            return;
+        }
+}
+
+//==============================================================================
+// Pestañas en columna (ya casi no se usan; se quedan por si acaso)
+//==============================================================================
 void SideTabs::paint (Graphics& g)
 {
     const auto& pal = ctx.vis.pal;
@@ -936,23 +1194,12 @@ void SideTabs::paint (Graphics& g)
     {
         auto r = item (i);
         const float rad = r.getHeight() * shapedRadius (pal, 0.3f);
-        if (i == selected)
-        {
-            g.setColour (pal.accent);
-            g.fillRoundedRectangle (r, rad);
-        }
-        else if (i == hover)
-        {
-            g.setColour (pal.text.withAlpha (0.07f));
-            g.fillRoundedRectangle (r, rad);
-        }
+        if (i == selected) { g.setColour (pal.accent); g.fillRoundedRectangle (r, rad); }
+        else if (i == hover) { g.setColour (pal.text.withAlpha (0.07f)); g.fillRoundedRectangle (r, rad); }
         g.setColour (i == selected ? pal.accentInk : pal.text.withAlpha (0.85f));
         g.setFont (ctx.fonts.ui (14.5f, i == selected ? 2 : 1));
         g.drawText (names[i], r.reduced (14.0f, 0.0f), Justification::centredLeft, false);
     }
-    // Línea que separa las pestañas del contenido
-    g.setColour (pal.text.withAlpha (0.08f));
-    g.fillRect ((float) getWidth() - 1.0f, 0.0f, 1.0f, (float) getHeight());
 }
 
 void SideTabs::mouseMove (const MouseEvent& e)
@@ -974,162 +1221,297 @@ void SideTabs::mouseUp (const MouseEvent& e)
         }
 }
 
-void CustomizePanel::showTab (int i)
+//==============================================================================
+// Panel general: estilo, temas y movimiento
+//==============================================================================
+StringArray CustomizePanel::tabNames() { return { "Estilo", "Temas", "Movimiento" }; }
+
+static int lastCustomizeTab = 0;
+void CustomizePanel::setStartTab (int t) { lastCustomizeTab = jlimit (0, tabNames().size() - 1, t); }
+
+CustomizePanel::CustomizePanel (UiContext& c, Prefs& p, PanelHooks h)
+    : ctx (c), prefs (p), hooks (std::move (h)), tabs (c, tabNames())
 {
-    lastCustomizeTab = i;
-    build (i);
-    resized();
-    if (onTab) onTab (i);
+    addAndMakeVisible (tabs);
+    tabs.onChange = [this] (int i) { showTab (i); };
+    setSize (440, 500);
+    tabs.setSelected (lastCustomizeTab);
+    showTab (lastCustomizeTab);
 }
 
 void CustomizePanel::resized()
 {
-    tabs.setBounds (0, 0, 134, getHeight());
-    if (page != nullptr) page->setBounds (150, 0, getWidth() - 150, getHeight());
+    tabs.setBounds (0, 0, getWidth(), 38);
+    if (page != nullptr) page->setBounds (0, 50, getWidth(), getHeight() - 50);
 }
 
 void CustomizePanel::paint (Graphics&) {}
 
-void CustomizePanel::build (int tab)
+void CustomizePanel::showTab (int tab)
+{
+    lastCustomizeTab = tab;
+    if (page != nullptr) removeChildComponent (page.get());
+    page.reset();
+    auto list = std::make_unique<OptionsList> (ctx);
+    auto& P = prefs;
+    SafePointer<CustomizePanel> safe (this);
+    auto rebuild = [safe] { MessageManager::callAsync ([safe] { if (safe != nullptr) safe->showTab (safe->tabs.getSelected()); }); };
+    const int w = 428;
+
+    if (tab == 0)   // Estilo
+    {
+        auto tiles = std::make_unique<LookTiles> (ctx, P, rebuild);
+        const int th = tiles->heightFor (w);
+        list->custom ("Estilo", std::move (tiles), th);
+        list->chips (U8 ("Día o noche"), { U8 ("Día"), "Noche", "Auto" }, P.dayNight, [&P] (int i) { P.dayNight = i; P.save(); });
+        list->custom (U8 ("Color principal (cambia todo MidiCat)"), std::make_unique<SwatchRow> (ctx,
+                          [&P] { return P.uiAccent; }, [&P] { return P.palette().accent; },
+                          [&P] (Colour col) { P.uiAccent = col; clearPieceColours (P); P.save(); }), 0);
+        list->custom (U8 ("Color del cuerpo"), std::make_unique<SwatchRow> (ctx,
+                          [&P] { return P.uiTint; }, [&P] { return P.palette().body1; },
+                          [&P] (Colour col) { P.uiTint = col; P.uiTintExact = ! col.isTransparent(); P.save(); }), 0);
+        {
+            const auto& qp = quickPalettes();
+            StringArray names;
+            for (auto& q : qp) names.add (q.name);
+            int sel = -1;
+            for (int i = 0; i < (int) qp.size(); ++i)
+                if ((i == 0 && P.uiTint.isTransparent() && P.uiAccent.isTransparent()) || (i > 0 && ! P.uiTintExact && P.uiTint == qp[(size_t) i].tint && P.uiAccent == qp[(size_t) i].accent)) sel = i;
+            auto& cg = list->chips (U8 ("Paletas rápidas"), names, sel, [&P, rebuild] (int i)
+            {
+                const auto& q = quickPalettes()[(size_t) i];
+                P.uiTint = q.tint; P.uiAccent = q.accent; P.uiTintExact = false;
+                clearPieceColours (P);
+                P.save();
+                rebuild();
+            });
+            cg.decorateW = 30.0f;
+            auto* ctxp = &ctx;
+            cg.decorate = [ctxp] (Graphics& g, Rectangle<float> r, int i)
+            {
+                const auto& q = quickPalettes()[(size_t) i];
+                const auto& pal = ctxp->vis.pal;
+                g.setColour (q.tint.isTransparent() ? pal.body2 : q.tint);
+                g.fillEllipse (r.getX(), r.getCentreY() - 7.0f, 14.0f, 14.0f);
+                g.setColour (q.accent.isTransparent() ? pal.accent : q.accent);
+                g.fillEllipse (r.getX() + 11.0f, r.getCentreY() - 7.0f, 14.0f, 14.0f);
+            };
+        }
+        list->slider (U8 ("Colores suaves (más grises, descansan la vista)"), 0.0f, 1.0f, 0.0f, P.soft, pct,
+                      [&P] (float v) { P.soft = v; P.save(); });
+        list->chips ("Forma de los botones", buttonShapeNames(), P.pieces.btnShape, [&P] (int i) { P.pieces.btnShape = i; P.save(); });
+        list->custom ({}, std::make_unique<NoteRow> (ctx, U8 ("Para cambiar una sola pieza (pantalla, grados, círculo, pentagrama o teclas) usa el botoncito de ajustes que tiene en su esquina.")), 0);
+    }
+    else if (tab == 1)   // Temas
+    {
+        StringArray groups;
+        for (auto& t : builtinThemes()) groups.addIfNotAlreadyThere (t.group);
+        auto apply = [this, rebuild] (const ThemePreset& t)
+        {
+            if (hooks.applyTheme) hooks.applyTheme (t); else prefs.applyTheme (t);
+            rebuild();
+        };
+        for (auto& gname : groups)
+        {
+            std::vector<const ThemePreset*> items;
+            for (auto& t : builtinThemes()) if (t.group == gname) items.push_back (&t);
+            auto tiles = std::make_unique<ThemeTiles> (ctx, P, items, apply);
+            const int th = tiles->heightFor (w);
+            list->custom ("Temas listos: " + gname, std::move (tiles), th);
+        }
+        auto themes = std::make_unique<ThemesBox> (ctx, P, hooks, rebuild);
+        const int tH = themes->heightFor (w);
+        list->custom ("Mis temas (guardan todo: estilo, colores, cada pieza, movimiento y acomodo)", std::move (themes), tH);
+    }
+    else   // Movimiento
+    {
+        const auto& pc = P.pieces;
+        list->toggle ("Animaciones", pc.anim, [&P] (bool on) { P.pieces.anim = on; P.save(); });
+        list->slider ("Velocidad de las animaciones", 0.4f, 2.5f, 1.0f, pc.animSpeed, [] (float v) { return String (v, 1) + "x"; },
+                      [&P] (float v) { P.pieces.animSpeed = v; P.save(); });
+        list->chips ("Teclas al tocar", keyMotionNames(), pc.keyMotion, [&P] (int i) { P.pieces.keyMotion = i; P.save(); });
+        list->slider ("Destello de las teclas", 0.0f, 1.0f, 0.5f, pc.keyGlow, pct, [&P] (float v) { P.pieces.keyGlow = v; P.save(); });
+        list->chips (U8 ("Pantalla al cambiar de acorde"), screenMotionNames(), pc.scrMotion, [&P] (int i) { P.pieces.scrMotion = i; P.save(); });
+        list->toggle (U8 ("Luz que recorre las líneas del círculo"), pc.cirFlow, [&P] (bool on) { P.pieces.cirFlow = on; P.save(); });
+        list->toggle ("Paneles con transiciones suaves", pc.panelMotion, [&P] (bool on) { P.pieces.panelMotion = on; P.save(); });
+    }
+    page = std::make_unique<Page> (ctx, std::move (list));
+    addAndMakeVisible (*page);
+    resized();
+}
+
+//==============================================================================
+// Panel de una sola pieza
+//==============================================================================
+static std::array<bool, 5> pieceMoreOpen {};
+
+String PiecePanel::titleFor (int piece)
+{
+    switch (piece)
+    {
+        case screenPiece:  return "Pantalla";
+        case degreesPiece: return "Grados";
+        case circlePiece:  return U8 ("Círculo de quintas");
+        case staffPiece:   return "Pentagrama";
+        default:           return "Teclas";
+    }
+}
+
+PiecePanel::PiecePanel (UiContext& c, Prefs& p, int pc, PanelHooks h)
+    : ctx (c), prefs (p), piece (jlimit (0, 4, pc)), hooks (std::move (h))
+{
+    setSize (340, 420);
+    rebuild();
+}
+
+void PiecePanel::resized()
+{
+    if (page != nullptr) page->setBounds (getLocalBounds());
+}
+
+void PiecePanel::rebuild()
 {
     if (page != nullptr) removeChildComponent (page.get());
     page.reset();
     auto list = std::make_unique<OptionsList> (ctx);
-    std::unique_ptr<ColourEditor> colours;
     auto& P = prefs;
     auto& pc = prefs.pieces;
-    auto save = [&P] { P.save(); };
-    SafePointer<CustomizePanel> safe (this);
-    auto rebuild = [safe] { MessageManager::callAsync ([safe] { if (safe != nullptr) safe->showTab (safe->tabs.getSelected()); }); };
-
-    switch (tab)
+    SafePointer<PiecePanel> safe (this);
+    auto again = [safe] { MessageManager::callAsync ([safe] { if (safe != nullptr) safe->rebuild(); }); };
+    const bool more = pieceMoreOpen[(size_t) piece];
+    auto moreRow = [&]
     {
-        case 0:   // Estilo
+        const int pi = piece;
+        list->custom ({}, std::make_unique<MoreRow> (ctx, more, [pi, again] { pieceMoreOpen[(size_t) pi] = ! pieceMoreOpen[(size_t) pi]; again(); }), 34);
+    };
+    auto swatch = [&] (const String& label, std::function<Colour()> get, std::function<Colour()> base, std::function<void (Colour)> set)
+    {
+        list->custom (label, std::make_unique<SwatchRow> (ctx, std::move (get), std::move (base), std::move (set)), 0);
+    };
+    std::function<void()> reset;
+
+    switch (piece)
+    {
+        case screenPiece:
         {
-            auto tiles = std::make_unique<LookTiles> (ctx, P);
-            const int th = tiles->heightFor (456);
-            list->custom ("Estilo", std::move (tiles), th);
-            list->chips (U8 ("Modo día o noche"), { U8 ("Día"), "Noche", "Auto" }, P.dayNight, [&P] (int i) { P.dayNight = i; P.save(); });
-            {
-                const auto& qp = quickPalettes();
-                StringArray names;
-                for (auto& q : qp) names.add (q.name);
-                int sel = -1;
-                for (int i = 0; i < (int) qp.size(); ++i)
-                    if ((i == 0 && P.uiTint.isTransparent() && P.uiAccent.isTransparent()) || (i > 0 && P.uiTint == qp[(size_t) i].tint && P.uiAccent == qp[(size_t) i].accent)) sel = i;
-                auto& cg = list->chips (U8 ("Paletas rápidas"), names, sel, [&P, rebuild] (int i)
-                {
-                    const auto& q = quickPalettes()[(size_t) i];
-                    P.uiTint = q.tint; P.uiAccent = q.accent; P.save();
-                    rebuild();
-                });
-                cg.decorateW = 30.0f;
-                auto* ctxp = &ctx;
-                cg.decorate = [ctxp] (Graphics& g, Rectangle<float> r, int i)
-                {
-                    const auto& q = quickPalettes()[(size_t) i];
-                    const auto& pal = ctxp->vis.pal;
-                    g.setColour (q.tint.isTransparent() ? pal.body2 : q.tint);
-                    g.fillEllipse (r.getX(), r.getCentreY() - 7.0f, 14.0f, 14.0f);
-                    g.setColour (q.accent.isTransparent() ? pal.accent : q.accent);
-                    g.fillEllipse (r.getX() + 11.0f, r.getCentreY() - 7.0f, 14.0f, 14.0f);
-                };
-            }
-            list->chips ("Forma de los botones", buttonShapeNames(), pc.btnShape, [&P] (int i) { P.pieces.btnShape = i; P.save(); });
-            auto themes = std::make_unique<ThemesBox> (ctx, P, rebuild);
-            const int tH = themes->heightFor (456);
-            list->custom ("Mis temas (guardan todo: estilo, colores, formas y movimiento)", std::move (themes), tH);
-            colours = std::make_unique<ColourEditor> (ctx, std::vector<ColourTarget> {
-                { "Tono del cuerpo", [&P] { return P.uiTint; }, [this] { return ctx.vis.pal.body2; }, [&P] (Colour c) { P.uiTint = c; P.save(); } },
-                { "Acento", [&P] { return P.uiAccent; }, [this] { return ctx.vis.pal.accent; }, [&P] (Colour c) { P.uiAccent = c; P.save(); } } },
-                "Volver al original", [&P] { P.uiTint = P.uiAccent = Colour(); P.save(); });
-            break;
-        }
-        case 1:   // Teclas
-        {
-            list->chips ("Forma de las teclas", keyStyleNames(), P.effectiveKeyStyle(), [&P] (int i) { P.keyStyle = i; P.save(); });
-            list->toggle (U8 ("Arcoíris: cada nota de un color"), P.rainbow, [&P] (bool on) { P.rainbow = on; P.save(); });
-            list->custom ("Muestra", std::make_unique<KeysPreview> (ctx, P), 150);
-            colours = std::make_unique<ColourEditor> (ctx, std::vector<ColourTarget> {
-                { "Encendidas", [&P] { return P.keyLit; }, [this] { return ctx.vis.pal.lit; }, [&P] (Colour c) { P.keyLit = c; P.rainbow = false; P.save(); } },
-                { "Blancas", [&P] { return P.keyWhite; }, [this] { return ctx.vis.pal.keyW; }, [&P] (Colour c) { P.keyWhite = c; P.save(); } },
-                { "Negras", [&P] { return P.keyBlack; }, [this] { return ctx.vis.pal.keyB; }, [&P] (Colour c) { P.keyBlack = c; P.save(); } } },
-                U8 ("Colores de fábrica"), [&P, rebuild] { P.keyLit = P.keyWhite = P.keyBlack = Colour(); P.rainbow = false; P.save(); rebuild(); });
-            break;
-        }
-        case 2:   // Pantalla
-        {
-            list->chips (U8 ("Diseño"), screenSkinNames(), pc.scrSkin, [&P, rebuild] (int i) { P.pieces.scrSkin = i; P.save(); rebuild(); });
+            list->chips (U8 ("Diseño"), screenSkinNames(), pc.scrSkin, [&P, again] (int i) { P.pieces.scrSkin = i; P.save(); again(); });
             auto& letters = list->chips ("Letra", screenFontNames(), pc.scrFont, [&P] (int i) { P.pieces.scrFont = i; P.save(); });
             auto* ctxp = &ctx;
             letters.fontFor = [ctxp] (int i, float h) { return i == 0 ? ctxp->fonts.ui (h * 0.93f, 1) : ctxp->fonts.display (i, false, h * 1.05f); };
             list->chips ("Forma", screenShapeNames(), pc.scrShape, [&P] (int i) { P.pieces.scrShape = i; P.save(); });
-            list->chips ("Textura", screenTextureNames(), pc.scrTexture, [&P] (int i) { P.pieces.scrTexture = i; P.save(); });
-            list->slider ("Luces (brillo de las letras)", 0.0f, 1.0f, 0.0f, pieces::screenLook (ctx.vis.pal).glow, pct,
-                          [&P] (float v) { P.pieces.scrGlow = v; P.save(); });
-            list->chips (U8 ("Movimiento al cambiar de acorde"), screenMotionNames(), pc.scrMotion, [&P] (int i) { P.pieces.scrMotion = i; P.save(); });
-            colours = std::make_unique<ColourEditor> (ctx, std::vector<ColourTarget> {
-                { "Letras", [&P] { return P.pieces.scrText; }, [this] { return pieces::screenLook (ctx.vis.pal).text; }, [&P] (Colour c) { P.pieces.scrText = c; P.save(); } },
-                { "Fondo", [&P] { return P.pieces.scrBack; }, [this] { return pieces::screenLook (ctx.vis.pal).bg; }, [&P] (Colour c) { P.pieces.scrBack = c; P.save(); } } },
-                "Quitar mis colores", [&P] { P.pieces.scrText = P.pieces.scrBack = Colour(); P.save(); });
+            list->chips ("Sin tocar nada", screenIdleNames(), pc.scrIdle, [&P] (int i) { P.pieces.scrIdle = i; P.save(); });
+            swatch ("Color de las letras", [&P] { return P.pieces.scrText; }, [&P] { return pieces::screenLook (P.palette()).text; },
+                    [&P] (Colour c) { P.pieces.scrText = c; P.save(); });
+            moreRow();
+            if (more)
+            {
+                swatch ("Color del fondo", [&P] { return P.pieces.scrBack; }, [&P] { return pieces::screenLook (P.palette()).bg; },
+                        [&P] (Colour c) { P.pieces.scrBack = c; P.save(); });
+                list->chips ("Textura", screenTextureNames(), pc.scrTexture, [&P] (int i) { P.pieces.scrTexture = i; P.save(); });
+                list->slider ("Luces (brillo de las letras)", 0.0f, 1.0f, 0.0f, pieces::screenLook (P.palette()).glow, pct,
+                              [&P] (float v) { P.pieces.scrGlow = v; P.save(); });
+                list->chips (U8 ("Al cambiar de acorde"), screenMotionNames(), pc.scrMotion, [&P] (int i) { P.pieces.scrMotion = i; P.save(); });
+            }
+            reset = [&P] { auto& q = P.pieces; q.scrSkin = q.scrFont = q.scrTexture = q.scrMotion = q.scrShape = q.scrIdle = 0;
+                           q.scrText = q.scrBack = Colour(); q.scrGlow = -1.0f; P.save(); };
             break;
         }
-        case 3:   // Grados
+        case degreesPiece:
         {
-            list->chips (U8 ("Diseño de los botones"), degreeSkinNames(), pc.degSkin, [&P] (int i) { P.pieces.degSkin = i; P.save(); });
+            list->chips ("Mostrar", degreeLabelNames(), pc.degLabels, [&P] (int i) { P.pieces.degLabels = i; P.save(); });
+            list->chips (U8 ("Diseño"), degreeSkinNames(), pc.degSkin, [&P] (int i) { P.pieces.degSkin = i; P.save(); });
             list->chips ("Forma", degreeShapeNames(), pc.degShape, [&P] (int i) { P.pieces.degShape = i; P.save(); });
-            auto* od = &openDegrees;
-            list->custom ("Tocar y grabar los grados con teclas de la compu o pads MIDI",
-                          std::make_unique<ButtonRow> (ctx, "keys", U8 ("Teclas y pads…"), [od] { if (*od) (*od)(); }), 42);
-            colours = std::make_unique<ColourEditor> (ctx, std::vector<ColourTarget> {
-                { U8 ("Luz del grado que suena"), [&P] { return P.pieces.degColour; }, [this] { return ctx.vis.pal.accent; }, [&P] (Colour c) { P.pieces.degColour = c; P.save(); } } },
-                "Quitar mi color", [&P] { P.pieces.degColour = Colour(); P.save(); });
+            swatch ("Luz del grado que suena", [&P] { return P.pieces.degColour; }, [&P] { return P.palette().accent; },
+                    [&P] (Colour c) { P.pieces.degColour = c; P.save(); });
+            moreRow();
+            if (more)
+            {
+                auto* hk = &hooks;
+                list->custom ("Tocar y grabar los grados con teclas de la compu o pads MIDI",
+                              std::make_unique<ButtonRow> (ctx, "keys", U8 ("Teclas y pads…"), [hk] { if (hk->openDegreeInput) hk->openDegreeInput(); }), 40);
+            }
+            reset = [&P] { auto& q = P.pieces; q.degSkin = q.degShape = q.degLabels = 0; q.degColour = Colour(); P.save(); };
             break;
         }
-        case 4:   // Círculo
+        case circlePiece:
         {
             list->chips (U8 ("Diseño"), circleSkinNames(), pc.cirSkin, [&P] (int i) { P.pieces.cirSkin = i; P.save(); });
             list->chips (U8 ("Líneas entre las notas"), circleRouteNames(), pc.cirRoute, [&P] (int i) { P.pieces.cirRoute = i; P.save(); });
-            list->slider (U8 ("Grosor de las líneas"), 0.5f, 2.5f, 1.0f, pc.cirLineW, [] (float v) { return String (v, 1) + "x"; },
-                          [&P] (float v) { P.pieces.cirLineW = v; P.save(); });
-            list->slider (U8 ("Tamaño del botón del centro"), 0.5f, 1.15f, 1.0f, pc.cirKnob, pct,
-                          [&P] (float v) { P.pieces.cirKnob = v; P.save(); });
-            list->chips ("Puntos de las notas", circleNodeNames(), pc.cirNodes, [&P] (int i) { P.pieces.cirNodes = i; P.save(); });
-            list->chips ("Textura", circleTextureNames(), pc.cirTexture, [&P] (int i) { P.pieces.cirTexture = i; P.save(); });
-            list->chips ("Placa", plateShapeNames(), pc.cirShape, [&P] (int i) { P.pieces.cirShape = i; P.save(); });
-            list->toggle (U8 ("Luz que recorre las líneas"), pc.cirFlow, [&P] (bool on) { P.pieces.cirFlow = on; P.save(); });
-            colours = std::make_unique<ColourEditor> (ctx, std::vector<ColourTarget> {
-                { U8 ("Color de la tonalidad y las líneas"), [&P] { return P.pieces.cirColour; }, [this] { return ctx.vis.pal.accent; }, [&P] (Colour c) { P.pieces.cirColour = c; P.save(); } } },
-                "Quitar mi color", [&P] { P.pieces.cirColour = Colour(); P.save(); });
+            list->slider (U8 ("Tamaño del centro"), 0.5f, 1.15f, 1.0f, pc.cirKnob, pct, [&P] (float v) { P.pieces.cirKnob = v; P.save(); });
+            swatch (U8 ("Color de la tonalidad y las líneas"), [&P] { return P.pieces.cirColour; }, [&P] { return P.palette().accent; },
+                    [&P] (Colour c) { P.pieces.cirColour = c; P.save(); });
+            moreRow();
+            if (more)
+            {
+                list->slider (U8 ("Grosor de las líneas"), 0.5f, 2.5f, 1.0f, pc.cirLineW, [] (float v) { return String (v, 1) + "x"; },
+                              [&P] (float v) { P.pieces.cirLineW = v; P.save(); });
+                list->chips ("Puntos de las notas", circleNodeNames(), pc.cirNodes, [&P] (int i) { P.pieces.cirNodes = i; P.save(); });
+                list->chips ("Textura", circleTextureNames(), pc.cirTexture, [&P] (int i) { P.pieces.cirTexture = i; P.save(); });
+                list->chips ("Placa", plateShapeNames(), pc.cirShape, [&P] (int i) { P.pieces.cirShape = i; P.save(); });
+                list->toggle (U8 ("Luz que recorre las líneas"), pc.cirFlow, [&P] (bool on) { P.pieces.cirFlow = on; P.save(); });
+            }
+            reset = [&P] { auto& q = P.pieces; q.cirSkin = q.cirTexture = q.cirRoute = q.cirNodes = q.cirShape = 0;
+                           q.cirLineW = q.cirKnob = 1.0f; q.cirColour = Colour(); q.cirFlow = true; P.save(); };
             break;
         }
-        case 5:   // Pentagrama
+        case staffPiece:
         {
-            list->chips (U8 ("Diseño"), staffSkinNames(), pc.stfSkin, [&P] (int i) { P.pieces.stfSkin = i; P.save(); });
-            list->chips ("Textura", staffTextureNames(), pc.stfTexture, [&P] (int i) { P.pieces.stfTexture = i; P.save(); });
+            list->chips (U8 ("Diseño"), staffSkinNames(), pc.stfSkin, [&P, again] (int i) { P.pieces.stfSkin = i; P.save(); again(); });
             list->chips ("Marco", frameShapeNames(), pc.stfShape, [&P] (int i) { P.pieces.stfShape = i; P.save(); });
-            colours = std::make_unique<ColourEditor> (ctx, std::vector<ColourTarget> {
-                { "Tinta", [&P] { return P.pieces.stfInk; }, [this] { return pieces::staffLook (ctx.vis.pal).ink; }, [&P] (Colour c) { P.pieces.stfInk = c; P.save(); } },
-                { "Papel", [&P] { return P.pieces.stfPaper; }, [this] { return pieces::staffLook (ctx.vis.pal).paper; }, [&P] (Colour c) { P.pieces.stfPaper = c; P.save(); } } },
-                "Quitar mis colores", [&P] { P.pieces.stfInk = P.pieces.stfPaper = Colour(); P.save(); });
+            swatch ("Tinta", [&P] { return P.pieces.stfInk; }, [&P] { return pieces::staffLook (P.palette()).ink; },
+                    [&P] (Colour c) { P.pieces.stfInk = c; P.save(); });
+            moreRow();
+            if (more)
+            {
+                swatch ("Papel", [&P] { return P.pieces.stfPaper; }, [&P] { return pieces::staffLook (P.palette()).paper; },
+                        [&P] (Colour c) { P.pieces.stfPaper = c; P.save(); });
+                list->chips ("Textura", staffTextureNames(), pc.stfTexture, [&P] (int i) { P.pieces.stfTexture = i; P.save(); });
+            }
+            reset = [&P] { auto& q = P.pieces; q.stfSkin = q.stfTexture = q.stfShape = 0; q.stfInk = q.stfPaper = Colour(); P.save(); };
             break;
         }
-        default:  // Movimiento
+        default:   // Teclas
         {
-            list->toggle ("Animaciones", pc.anim, [&P] (bool on) { P.pieces.anim = on; P.save(); });
-            list->slider ("Velocidad de las animaciones", 0.4f, 2.5f, 1.0f, pc.animSpeed, [] (float v) { return String (v, 1) + "x"; },
-                          [&P] (float v) { P.pieces.animSpeed = v; P.save(); });
-            list->chips ("Teclas al tocar", keyMotionNames(), pc.keyMotion, [&P] (int i) { P.pieces.keyMotion = i; P.save(); });
-            list->slider ("Destello de las teclas", 0.0f, 1.0f, 0.5f, pc.keyGlow, pct, [&P] (float v) { P.pieces.keyGlow = v; P.save(); });
-            list->chips (U8 ("Pantalla al cambiar de acorde"), screenMotionNames(), pc.scrMotion, [&P] (int i) { P.pieces.scrMotion = i; P.save(); });
-            list->toggle (U8 ("Luz que recorre las líneas del círculo"), pc.cirFlow, [&P] (bool on) { P.pieces.cirFlow = on; P.save(); });
-            list->toggle ("Paneles con transiciones suaves", pc.panelMotion, [&P] (bool on) { P.pieces.panelMotion = on; P.save(); });
+            list->chips ("Forma de las teclas", keyStyleNames(), P.effectiveKeyStyle(), [&P] (int i) { P.keyStyle = i; P.save(); });
+            list->toggle (U8 ("Arcoíris: cada nota de un color"), P.rainbow, [&P] (bool on) { P.rainbow = on; P.save(); });
+            list->custom ("Muestra", std::make_unique<KeysPreview> (ctx, P), 112);
+            swatch ("Encendidas", [&P] { return P.keyLit; }, [&P] { return P.palette().accent; },
+                    [&P, again] (Colour c) { P.keyLit = c; if (! c.isTransparent()) P.rainbow = false; P.save(); again(); });
+            moreRow();
+            if (more)
+            {
+                swatch ("Blancas", [&P] { return P.keyWhite; }, [&P] { auto s = P.palette(); return P.keyWhite.isTransparent() ? s.keyW : s.keyW; },
+                        [&P] (Colour c) { P.keyWhite = c; P.save(); });
+                swatch ("Negras", [&P] { return P.keyBlack; }, [&P] { return P.palette().keyB; },
+                        [&P] (Colour c) { P.keyBlack = c; P.save(); });
+                list->chips ("Al tocar", keyMotionNames(), pc.keyMotion, [&P] (int i) { P.pieces.keyMotion = i; P.save(); });
+                list->slider ("Destello", 0.0f, 1.0f, 0.5f, pc.keyGlow, pct, [&P] (float v) { P.pieces.keyGlow = v; P.save(); });
+            }
+            reset = [&P] { P.keyStyle = -1; P.rainbow = false; P.keyLit = P.keyWhite = P.keyBlack = Colour();
+                           P.pieces.keyMotion = 0; P.pieces.keyGlow = 0.5f; P.save(); };
             break;
         }
     }
-    (void) save;
-    page = std::make_unique<Page> (ctx, std::move (list), std::move (colours));
+    list->custom ({}, std::make_unique<ButtonRow> (ctx, "restore", "Volver al estilo", [reset, again] { if (reset) reset(); again(); }), 40);
+
+    auto pg = std::make_unique<Page> (ctx, std::move (list));
+    // El panel crece con lo que tiene (hasta un tope) y si no cabe, se desplaza
+    const int natural = pg->naturalHeight (getWidth());
+    pg->onHeight = [safe] (int h)
+    {
+        if (safe == nullptr) return;
+        const int want = jlimit (160, 470, h + 4);
+        if (want != safe->getHeight())
+        {
+            safe->setSize (safe->getWidth(), want);
+            if (auto* p = safe->getParentComponent()) p->resized();
+        }
+    };
+    page = std::move (pg);
     addAndMakeVisible (*page);
+    setSize (getWidth(), jlimit (160, 470, natural + 4));
+    resized();
+    if (auto* p = getParentComponent()) { p->resized(); p->repaint(); }
 }
 
 //==============================================================================

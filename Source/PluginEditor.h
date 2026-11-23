@@ -85,7 +85,10 @@ private:
     std::array<bool, 7> degreeDown {};
     std::array<int, 128> degreeRefs {};
     void showDegreeInputPanel();
-    void avoidForTab (int tab);
+    void showPiecePanel (int piece);
+    PanelHooks panelHooks();
+    LayoutPreset currentLayout (const juce::String& name);
+    juce::Image backdropFor (juce::Rectangle<int> area, float scale);
 
     void timerCallback() override;
     void changeListenerCallback (juce::ChangeBroadcaster*) override;
@@ -152,6 +155,8 @@ private:
 
     Vis vis;
     UiContext ctx { vis, *fonts };
+    Vis winVis;                          // los paneles y ventanas (de día, todo claro)
+    UiContext winCtx { winVis, *fonts };
 
     RailBar rail { ctx };
     ScoreSection score { ctx };

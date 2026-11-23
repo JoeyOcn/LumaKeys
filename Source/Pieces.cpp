@@ -259,6 +259,8 @@ ScreenLook screenLook (const Skin& s)
     if (p.scrTexture == 5) l.glass = true;
     if (p.scrGlow >= 0.0f) l.glow = p.scrGlow;   // -1 = las luces del diseño
     if (l.light) l.glow *= 0.5f;
+    l.bg = s.soften (l.bg); l.text = s.soften (l.text); l.dim = s.soften (l.dim);
+    l.glow *= 1.0f - 0.6f * s.soft;
     return l;
 }
 
@@ -286,6 +288,7 @@ StaffLook staffLook (const Skin& s)
     }
     if (! p.stfPaper.isTransparent()) { l.paper = p.stfPaper; l.none = false; }
     if (! p.stfInk.isTransparent()) l.ink = p.stfInk;
+    l.paper = s.soften (l.paper); l.ink = s.soften (l.ink);
     l.dim = l.ink.withAlpha (0.62f);
     static const int texMap[6] = { -1, texNone, texPaper, texChalk, texRuled, texDots };
     l.texture = p.stfTexture == 0 ? defTex : texMap[jlimit (0, 5, p.stfTexture)];
@@ -400,7 +403,7 @@ static Colour stepColour (const Skin& s, int i)
     static const int group[7] = { 0, 0, 1, 1, 2, 2, 3 };
     if (s.stepColours) return s.caps[group[i]];
     static const Colour fixed[4] = { Colour (0xffe8452c), Colour (0xfff08a24), Colour (0xfff2c94c), Colour (0xffefe6d2) };
-    return fixed[group[i]];
+    return s.soften (fixed[group[i]]);
 }
 
 void degreeTile (Graphics& g, UiContext& ctx, Rectangle<float> r, int index, const String& roman, const String& symbol,
@@ -547,6 +550,19 @@ void degreeTile (Graphics& g, UiContext& ctx, Rectangle<float> r, int index, con
         }
     }
 
+    if (pal.pieces.degLabels == 0)
+    {
+        // Solo el grado (I a VII), grande y al centro
+        const Font rf = screenText ? ctx.fonts.display (sl.font, pal.pixelScreen, 24.0f * k) : ctx.fonts.ui (22.0f * k, 2);
+        const auto rt = screenText ? Fonts::displayText (sl.font, roman) : roman;
+        auto box = inner.withTrimmedBottom (2.0f * k);
+        if (screenText && glowCache != nullptr && (sl.glow > 0.0f || glow > 0.01f))
+            glowCache->draw (g, rt, rf, box, Justification::centred, textCol, jmin (1.0f, sl.glow + 0.7f * glow));
+        g.setColour (textCol);
+        g.setFont (rf);
+        g.drawText (rt, box, Justification::centred, false);
+        return;
+    }
     g.setColour (dimCol);
     g.setFont (ctx.fonts.ui (15.5f * k, 1));
     g.drawText (roman, inner.withHeight (inner.getHeight() * 0.42f).translated (0.0f, 6.0f * k), Justification::centred, false);

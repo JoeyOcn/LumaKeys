@@ -390,7 +390,30 @@ void MidiRecorder::finish()
     seq.addEvent (tempoMsg, 0.0);
     seq.addEvent (MidiMessage::timeSignatureMetaEvent (beatsAtStart.load(), 4), 0.0);
     if (keyRoot.load() >= 0) addKeyInfo (seq, keyRoot.load(), keyScale.load());
-    else seq.addEvent (MidiMessage::textMetaEvent (3, "MidiCat"), 0.0);
+    else
+    {
+        // Tonalidad automática sin datos todavía: se adivina con las notas de la toma
+        std::array<float, 12> hist {};
+        std::array<int64_t, 128> onAt {};
+        onAt.fill (-1);
+        for (auto& e : evs)
+        {
+            const int st = e.d[0] & 0xf0, nn = e.d[1] & 0x7f;
+            if (st == 0x90 && e.d[2] > 0) onAt[(size_t) nn] = e.time;
+            else if ((st == 0x80 || st == 0x90) && onAt[(size_t) nn] >= 0)
+            {
+                hist[(size_t) (nn % 12)] += (float) jlimit (0.1, 4.0, (double) (e.time - onAt[(size_t) nn]) / sr * bpm / 60.0);
+                onAt[(size_t) nn] = -1;
+            }
+        }
+        float total = 0.0f;
+        for (auto h : hist) total += h;
+        if (total > 0.0f)
+        {
+            const auto guess = theory::guessKey (hist);
+            addKeyInfo (seq, guess.root, guess.minor ? 1 : 0);
+        }
+    }
 
     std::array<int, 128> open {};
     bool pedalDown = false;
@@ -522,13 +545,57 @@ File MidiRecorder::dragCopy (const File& f)
     const auto info = readKeyInfo (midi);
     const String name = theory::keyTitle (info.root, info.scale, true) + " - " + String (roundToInt (info.bpm)) + " BPM";
     // Una carpeta por archivo para que dos grabaciones en la misma tonalidad no se pisen
-    auto dir = File::getSpecialLocation (File::tempDirectory).getChildFile ("MidiCat arrastrar")
+    auto dir = File::getSpecialLocation (File::tempDirectory).getChildFile ("MidiCat MIDI")
                    .getChildFile (String::toHexString (f.getFullPathName().hashCode64()));
     dir.createDirectory();
     // (el # se queda: sí se puede en Mac y Windows)
     auto out = dir.getChildFile (name.removeCharacters ("\\/:*?\"<>|") + (wav ? ".wav" : ".mid"));
-    if (out.getLastModificationTime() < f.getLastModificationTime() || ! out.existsAsFile())
-        if (! f.copyFileTo (out)) return f;
+    if (out.existsAsFile() && out.getLastModificationTime() >= f.getLastModificationTime())
+        return out;
+
+    if (wav) return f.copyFileTo (out) ? out : f;
+
+    // El DAW le pone al clip el nombre de la pista que trae el MIDI: se cambia por la tonalidad
+    // (las grabaciones viejas traían "Midi Cat" o "MidiCat")
+    MidiFile src;
+    {
+        FileInputStream in (f);
+        if (! in.openedOk() || ! src.readFrom (in) || src.getTimeFormat() <= 0)
+            return f.copyFileTo (out) ? out : f;
+    }
+    MidiFile dst;
+    dst.setTicksPerQuarterNote (src.getTimeFormat());
+    for (int t = 0; t < src.getNumTracks(); ++t)
+    {
+        const auto& tr = *src.getTrack (t);
+        MidiMessageSequence seq;
+        if (t == 0)
+        {
+            // Solo el nombre (la tonalidad) y la armadura: nada que diga "MidiCat"
+            const int root = theory::pcOf (info.root);
+            const int scale = jlimit (0, theory::numScales() - 1, info.scale);
+            const auto sig = theory::keySignature (root, scale);
+            seq.addEvent (MidiMessage::textMetaEvent (3, theory::keyTitle (root, scale, true)), 0.0);
+            seq.addEvent (MidiMessage::keySignatureMetaEvent (sig.flats ? -sig.count : sig.count, theory::scales()[(size_t) scale].minorFlavour), 0.0);
+        }
+        for (int i = 0; i < tr.getNumEvents(); ++i)
+        {
+            const auto& m = tr.getEventPointer (i)->message;
+            if (m.isTrackNameEvent() || m.isKeySignatureMetaEvent() || m.isEndOfTrackMetaEvent()) continue;
+            if (m.isTextMetaEvent() && m.getMetaEventType() == 1 && m.getTextFromTextMetaEvent().startsWith ("MidiCat key=")) continue;
+            seq.addEvent (m);
+        }
+        seq.updateMatchedPairs();
+        dst.addTrack (seq);
+    }
+    out.deleteFile();
+    {
+        FileOutputStream os (out);
+        if (! os.openedOk()) return f;
+        dst.writeTo (os, 1);
+        os.flush();
+        if (! os.getStatus().wasOk()) return f;
+    }
     return out;
 }
 

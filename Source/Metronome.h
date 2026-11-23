@@ -44,6 +44,8 @@ public:
 
     // Para escuchar un sonido al elegirlo
     void previewSound (int sound) noexcept { previewRequest.store (sound); }
+    // Un clic suelto (el piano roll lo pide en cada tiempo mientras reproduce)
+    void clickNow (bool accent) noexcept { clickRequest.store (accent ? 1 : 0); }
 
 private:
     void buildSounds();
@@ -57,6 +59,7 @@ private:
     bool wasOn = false;
     mutable std::atomic<bool> restartRequest { false };
     std::atomic<int> previewRequest { -1 };
+    std::atomic<int> clickRequest { -1 };
 
     // [sonido][0 = normal, 1 = fuerte]
     std::vector<std::array<std::vector<float>, 2>> sounds;

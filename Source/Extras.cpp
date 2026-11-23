@@ -495,8 +495,6 @@ public:
         r.play = in.removeFromRight (36.0f);
         r.edit = in.removeFromRight (36.0f);
         in.removeFromRight (4.0f);
-        r.audio = in.removeFromRight (70.0f).reduced (0.0f, 12.0f);
-        in.removeFromRight (6.0f);
         r.midi = in.removeFromRight (62.0f).reduced (0.0f, 12.0f);
         in.removeFromRight (8.0f);
         r.text = in.withTrimmedLeft (14.0f);
@@ -507,7 +505,6 @@ public:
     {
         auto& ctx = owner.ctx;
         const auto& pal = ctx.vis.pal;
-        const bool bouncing = owner.rec.isBouncing();
         for (int i = 0; i < (int) owner.rows.size(); ++i)
         {
             const auto& row = owner.rows[(size_t) i];
@@ -533,9 +530,6 @@ public:
                 g.drawText (label, cr, Justification::centred, false);
             };
             chip (rc.midi, "MIDI", true);
-            const bool thisBouncing = bouncing && owner.rec.bouncingFile() == MidiRecorder::audioFileFor (row.file);
-            if (thisBouncing) chip (rc.audio, String (roundToInt (owner.rec.bounceProgress() * 100.0f)) + " %", false);
-            else chip (rc.audio, row.hasAudio ? "Audio" : U8 ("→ Audio"), row.hasAudio);
 
             draw::icon (g, "pencil", rc.edit.reduced (9.0f, 15.0f), txt.withAlpha (0.85f), 1.5f);
             const bool playingThis = owner.isPlaying && owner.isPlaying() && playingRow == i;
@@ -561,7 +555,6 @@ public:
         if (rc.trash.contains (pf)) return trashZone;
         if (rc.play.contains (pf)) return playZone;
         if (rc.edit.contains (pf)) return editZone;
-        if (rc.audio.expanded (2.0f, 12.0f).contains (pf)) return audioZone;
         if (rc.midi.expanded (2.0f, 12.0f).contains (pf)) return midiZone;
         return rowZone;
     }
@@ -574,8 +567,7 @@ public:
         if (h >= 0)
         {
             const auto z = zoneAt (h, e.getPosition());
-            const bool audioReady = owner.rows[(size_t) h].hasAudio;
-            c = (z == midiZone || z == rowZone || (z == audioZone && audioReady)) ? MouseCursor::DraggingHandCursor : MouseCursor::PointingHandCursor;
+            c = (z == midiZone || z == rowZone) ? MouseCursor::DraggingHandCursor : MouseCursor::PointingHandCursor;
         }
         setMouseCursor (c);
     }
@@ -598,8 +590,7 @@ public:
         if (dragging || downRow < 0 || e.getDistanceFromDragStart() < 5) return;
         // Arrastrar: la fila o el chip MIDI llevan el .mid; el chip Audio lleva el .wav
         File f = owner.rows[(size_t) downRow].file;
-        if (downZone == audioZone) f = MidiRecorder::freshAudioFor (f);
-        else if (downZone != midiZone && downZone != rowZone) return;
+        if (downZone != midiZone && downZone != rowZone) return;
         if (! f.existsAsFile()) return;
         dragging = true;
         DragAndDropContainer::performExternalDragDropOfFiles ({ MidiRecorder::dragCopy (f).getFullPathName() }, false, this);
@@ -669,6 +660,7 @@ RecordingsPanel::RecordingsPanel (UiContext& c, Prefs& p, MidiRecorder& r, Metro
     for (Component* comp : std::initializer_list<Component*> { &recBtn, &folderBtn, &newBtn, &editBtn, &countSw, &mouseSw, &midiChip, &audioChip, &viewport, &clipView })
         addAndMakeVisible (comp);
     addChildComponent (audioSw);   // grabar audio ya no se ofrece
+    audioChip.setVisible (false);  // pasar a audio tampoco
     midiChip.compact = audioChip.compact = true;
     midiChip.text = "MIDI";
     audioChip.text = "Audio";
@@ -742,7 +734,7 @@ void RecordingsPanel::refreshList (bool selectNewest)
     list->setSize (jmax (10, viewport.getWidth() - 10), jmax (10, (int) rows.size() * List::rowH));
     if (selected >= 0 && rows[(size_t) selected].file != clipView.getFile()) clipView.setFile (rows[(size_t) selected].file);
     if (selected < 0) clipView.setFile ({});
-    for (Component* comp : std::initializer_list<Component*> { &editBtn, &midiChip, &audioChip }) comp->setVisible (! rows.empty());
+    for (Component* comp : std::initializer_list<Component*> { &editBtn, &midiChip }) comp->setVisible (! rows.empty());
     list->repaint();
     midiChip.repaint();
     audioChip.repaint();
@@ -768,8 +760,6 @@ void RecordingsPanel::timerCallback()
     const bool bouncing = rec.isBouncing();
     if (s == 1) st = U8 ("Cuenta: ") + String (rec.beatsLeftInCountIn()) + U8 ("…");
     else if (s == 2) st = U8 ("Grabando  ") + timeText (rec.elapsedSeconds());
-    else if (bouncing) st = U8 ("Pasando a audio… ") + String (roundToInt (rec.bounceProgress() * 100.0f)) + " %";
-    else if (wasBouncing) st = U8 ("Listo: el audio quedó junto al MIDI");
     else if (statusText.startsWith ("Arrastra") || statusText.startsWith ("Se cancel") || statusText.startsWith ("No se") || statusText.startsWith ("Primero")) st = statusText;
     else st = metro.on.load() ? U8 ("Listo · cae justo en el compás") : U8 ("Listo · empieza en tu primera nota");
     if (bouncing != wasBouncing) { wasBouncing = bouncing; if (! bouncing) refreshList(); }
@@ -802,8 +792,6 @@ void RecordingsPanel::resized()
     // Arriba de la vista: arrastrar MIDI (a la mano), audio y editar
     auto top = body.removeFromTop (40);
     midiChip.setBounds (top.removeFromLeft (124));
-    top.removeFromLeft (8);
-    audioChip.setBounds (top.removeFromLeft (150));
     editBtn.setBounds (top.removeFromRight (160));
     body.removeFromTop (10);
     clipView.setBounds (body);
@@ -828,7 +816,7 @@ void RecordingsPanel::paint (Graphics& g)
         g.drawFittedText (U8 ("Todavía no hay grabaciones.\nDale al botón rojo y toca algo."),
                           Rectangle<int> (0, 150, 440, 120), Justification::centred, 3);
     }
-    label (g, ctx, U8 ("Arrastra MIDI o Audio directo a tu DAW (lleva la tonalidad en el nombre)"), Rectangle<float> (0.0f, (float) getHeight() - 24.0f, 440.0f, 22.0f), false);
+    label (g, ctx, U8 ("Arrastra el MIDI directo a tu DAW (lleva la tonalidad en el nombre)"), Rectangle<float> (0.0f, (float) getHeight() - 24.0f, 440.0f, 22.0f), false);
 }
 
 //==============================================================================

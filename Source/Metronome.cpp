@@ -180,6 +180,8 @@ void Metronome::process (AudioBuffer<float>& out, int n, const MetronomeSettings
 
     const int pv = previewRequest.exchange (-1);
     if (pv >= 0) startClick (pv, true, 0);
+    const int ck = clickRequest.exchange (-1);
+    if (ck >= 0) startClick (st.sound.load(), ck == 1, 0);
 
     gain.setTargetValue (Decibels::decibelsToGain (st.volumeDb.load(), -60.0f));
     const int chans = out.getNumChannels();

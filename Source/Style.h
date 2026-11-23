@@ -74,6 +74,9 @@ struct PieceStyle
     int keyMotion = 0;      // 0 suave, 1 al instante, 2 con estela
     bool cirFlow = true;    // la luz que recorre las líneas del círculo
     bool panelMotion = true;// los paneles aparecen con transición
+    // Qué se ve
+    int scrIdle = 0;        // sin tocar nada: 0 la pantalla se queda vacía, 1 muestra la tonalidad
+    int degLabels = 0;      // grados: 0 solo el número (I a VII), 1 número y acorde
 
     void read (const juce::XmlElement&);
     void write (juce::XmlElement&) const;
@@ -96,6 +99,8 @@ juce::StringArray degreeShapeNames();
 juce::StringArray frameShapeNames();
 juce::StringArray plateShapeNames();
 juce::StringArray buttonShapeNames();
+juce::StringArray screenIdleNames();
+juce::StringArray degreeLabelNames();
 
 // Paleta ya resuelta: todo lo que se necesita para dibujar
 struct Skin
@@ -118,11 +123,16 @@ struct Skin
     bool flat = false;          // botones planos con contorno (estilo Papel)
     bool neon = false;          // bordes que brillan (estilo Neón)
     bool stepColours = false;   // grados de colores en fila (estilo Ritmo)
+    float soft = 0.0f;          // colores suaves: más grises y menos brillantes (0..1)
     PieceStyle pieces;
 
     juce::Colour noteColour (int midiNote) const;
     juce::Colour noteTag (int index) const;   // colores de las etiquetas de notas en la pantalla
+    juce::Colour soften (juce::Colour) const; // aplica los colores suaves
 };
+
+// Las ventanas (paneles, menús, piano roll): en modo día todo lo oscuro se vuelve claro
+Skin windowSkin (const Skin&);
 
 // Paletas rápidas: un tono para el cuerpo y un color de acento
 struct QuickPalette { juce::String name; juce::Colour tint, accent; };
@@ -141,16 +151,6 @@ struct FloatState
     bool collapsed = false;        // minimizada (solo se ve su barra)
 };
 
-// Un tema guardado por ti (estilo, día/noche y colores)
-struct ThemePreset
-{
-    juce::String name, look;
-    int dayNight = 0, keyStyle = -1;
-    juce::Colour uiTint, uiAccent, keyLit, keyWhite, keyBlack;
-    bool rainbow = false;
-    PieceStyle pieces;
-};
-
 // Un acomodo guardado de las ventanas (separadas, invisibles, minimizadas…)
 struct LayoutPreset
 {
@@ -159,6 +159,31 @@ struct LayoutPreset
     bool transparent = false, hideParams = false;
     int editorW = 0, editorH = 0;
 };
+
+// Un tema: todo lo de la interfaz (estilo, día/noche, colores, cada pieza, movimiento,
+// teclas, nombres de las notas y, en los tuyos, también el acomodo de las ventanas)
+struct ThemePreset
+{
+    juce::String name, look, group;
+    int dayNight = 0;              // -1 = no lo cambia (los temas listos)
+    int keyStyle = -1;
+    juce::Colour uiTint, uiAccent, keyLit, keyWhite, keyBlack;
+    bool uiTintExact = false;
+    bool rainbow = false;
+    float soft = 0.0f;
+    PieceStyle pieces;
+    bool hasExtras = false;        // nombres de notas, séptimas y rango del teclado
+    bool latin = false, sevenths = false;
+    int octaves = 3, startC = 48;
+    bool hasLayout = false;        // acomodo de las ventanas
+    LayoutPreset layout;
+
+    void read (const juce::XmlElement&);
+    void write (juce::XmlElement&) const;
+};
+
+// Temas listos, hechos con las opciones que ya existen (por grupos)
+const std::vector<ThemePreset>& builtinThemes();
 
 // Preferencias visuales globales (se guardan en la compu y se comparten entre instancias).
 class Prefs : public juce::ChangeBroadcaster
@@ -173,6 +198,8 @@ public:
     int octaves = 3;
     int startC = 48;               // la tecla Do más grave que se ve
     juce::Colour uiTint, uiAccent;            // transparentes = los del estilo
+    bool uiTintExact = false;                 // el cuerpo toma exactamente el color elegido
+    float soft = 0.0f;                        // colores suaves (0..1)
     juce::Colour keyLit, keyWhite, keyBlack;  // transparentes = los del estilo
     bool rainbow = false;
     bool latin = false;
@@ -192,7 +219,7 @@ public:
     bool metroFollowHost = true;
     bool countIn = true;
     bool recordMouse = true;
-    bool recordAudio = false;      // ya no se ofrece (solo "Pasar a audio")
+    bool recordAudio = false;      // ya no se ofrece
     int degreeOctave = 0;          // octava de los acordes de los grados (-2..2)
 
     // Diseño de cada pieza y movimiento
@@ -208,11 +235,15 @@ public:
     // Tus presets
     std::vector<ThemePreset> themes;
     std::vector<LayoutPreset> layouts;
-    ThemePreset captureTheme (const juce::String& name) const;
-    void applyTheme (const ThemePreset&);
+    ThemePreset captureTheme (const juce::String& name) const;   // sin el acomodo (eso lo pone el editor)
+    void applyTheme (const ThemePreset&);                        // sin el acomodo (eso lo aplica el editor)
+
+    // Tamaño de cada panel (lo ajustas arrastrando su esquina)
+    std::map<juce::String, float> panelZoom;
 
     void save (bool notify = true);
     Skin palette (const juce::String& lookOverride = {}) const;
+    Skin paletteFor (const ThemePreset&) const;                  // cómo se vería un tema (para las muestras)
     bool isNight() const;
     int effectiveKeyStyle() const;
 

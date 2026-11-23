@@ -15,11 +15,15 @@ static int whiteIndexOf (int note)
 //==============================================================================
 Section::Section (UiContext& c, String sectionId, String sectionTitle, Point<int> naturalSize)
     : id (std::move (sectionId)), title (std::move (sectionTitle)), natural (naturalSize), ctx (c),
-      detachBtn (c, "detach", "Separar en su propia ventana")
+      detachBtn (c, "detach", "Separar en su propia ventana"),
+      tuneBtn (c, "tune", U8 ("Ajustar solo esta pieza: diseño, forma, letras y colores"))
 {
     detachBtn.framed = false;
     detachBtn.onClick = [this] { if (onDetach) onDetach(); };
     addAndMakeVisible (detachBtn);
+    tuneBtn.framed = false;
+    tuneBtn.onClick = [this] { if (onTune) onTune(); };
+    addAndMakeVisible (tuneBtn);
 }
 
 void Section::refreshControls()
@@ -33,7 +37,11 @@ void Section::resized()
     const int s = roundToInt (30.0f * k);
     const int pad = roundToInt (10.0f * k);
     detachBtn.setBounds (getWidth() - s - pad, pad, s, s);
-    detachBtn.setVisible (wantsDetachButton() && ! floating && ! ctx.vis.hideParams);
+    const bool controls = ! floating && ! ctx.vis.hideParams;
+    detachBtn.setVisible (wantsDetachButton() && controls);
+    tuneBtn.lightOnDark = detachBtn.lightOnDark;
+    tuneBtn.setBounds (detachBtn.isVisible() ? detachBtn.getX() - s : getWidth() - s - pad, pad, s, s);
+    tuneBtn.setVisible (wantsTuneButton() && controls);
     layoutContent (getLocalBounds());
 }
 
@@ -235,10 +243,9 @@ void ScoreSection::paintContent (Graphics& g, Rectangle<float> area)
         }
 
         const float alpha = (n.susOnly ? 0.45f : 1.0f) * jmax (0.35f, v.level[(size_t) n.midi]);
-        const auto lightCol = pal.noteColour (n.midi);
-        g.setColour (lightCol.withAlpha (0.28f * alpha));
-        g.fillEllipse (nx + headW * 0.5f - sp * 1.05f, ny - sp * 1.05f, sp * 2.1f, sp * 2.1f);
-        g.setColour (ink.withAlpha (alpha));
+        // Sin sombras: la nota limpia. Con arcoíris, del mismo color que su tecla
+        const auto headCol = pal.rainbow && ! tm ? pal.noteColour (n.midi) : ink;
+        g.setColour (headCol.withAlpha (alpha));
         drawGlyph (g, mf, 0xE0A2, nx, ny);
 
         if (n.showAcc)
@@ -278,12 +285,16 @@ void ScreenSection::paintContent (Graphics& g, Rectangle<float> area)
 
     if (count == 0)
     {
-        StringArray sn;
-        for (auto s : theory::scales()[(size_t) v.scale].steps)
-            sn.add (theory::pcName (v.keyRoot + s, v.sig, v.latin));
-        sub = "Escala: " + sn.joinIntoString ("  ");
+        if (pal.pieces.scrIdle == 1)
+        {
+            StringArray sn;
+            for (auto s : theory::scales()[(size_t) v.scale].steps)
+                sn.add (theory::pcName (v.keyRoot + s, v.sig, v.latin));
+            sub = "Escala: " + sn.joinIntoString ("  ");
+            leftSub = U8 ("Toca una nota o un acorde");
+        }
+        else leftTop = {};   // vacía hasta que toques algo
         leftBig = "";
-        leftSub = U8 ("Toca una nota o un acorde");
     }
     else if (distinct == 1)
     {
@@ -372,7 +383,7 @@ void ScreenSection::paintContent (Graphics& g, Rectangle<float> area)
         {
             const bool on = i < (int) v.active.size();
             g.setColour (dots[i].withAlpha (on ? 1.0f : 0.25f));
-            g.fillRect (in.getRight() - (detachBtn.isVisible() ? 30.0f * k : 0.0f) - (float) (4 - i) * 16.0f * k, in.getY() + 4.0f * k, 11.0f * k, 11.0f * k);
+            g.fillRect (in.getRight() - (detachBtn.isVisible() ? 30.0f * k : 0.0f) - (tuneBtn.isVisible() ? 30.0f * k : 0.0f) - (float) (4 - i) * 16.0f * k, in.getY() + 4.0f * k, 11.0f * k, 11.0f * k);
         }
     }
 
@@ -388,7 +399,7 @@ void ScreenSection::paintContent (Graphics& g, Rectangle<float> area)
             const float w = draw::textWidth (pf, nm) + 28.0f * k;
             if (x + w > tags.getRight()) break;
             auto tr = Rectangle<float> (x, tags.getY() + 2.0f * k, w, 30.0f * k);
-            const auto col = pal.rainbow ? pal.noteColour (m) : pal.noteTag (i);
+            const auto col = pal.rainbow || ! pal.pixelScreen ? pal.noteColour (m) : pal.noteTag (i);
             const float lv = jmax (0.45f, v.level[(size_t) m]);
             g.setColour (col.withAlpha (0.16f * lv));
             g.fillRoundedRectangle (tr, tr.getHeight() * 0.5f);
@@ -515,15 +526,26 @@ bool DegreesSection::stepAnimation (float dt)
     return moving;
 }
 
+void DegreesSection::layoutContent (Rectangle<int> b)
+{
+    listArea = b.toFloat().reduced (1.0f, 6.0f * k);
+    // A la derecha: el botoncito de ajustes y la octava de los acordes (▲ número ▼)
+    if (tuneBtn.isVisible())
+    {
+        auto t = listArea.removeFromRight (26.0f * k);
+        tuneBtn.setBounds (t.withSizeKeepingCentre (26.0f * k, 26.0f * k).toNearestInt());
+        listArea.removeFromRight (4.0f * k);
+    }
+    octArea = listArea.removeFromRight (40.0f * k);
+    listArea.removeFromRight (8.0f * k);
+}
+
 void DegreesSection::paintContent (Graphics& g, Rectangle<float> area)
 {
     auto& v = ctx.vis;
     const auto& pal = v.pal;
     const bool tm = transparentMode();
-    listArea = area.reduced (1.0f, 6.0f * k);
-    // A la derecha: la octava de los acordes (▲ número ▼)
-    octArea = listArea.removeFromRight (40.0f * k);
-    listArea.removeFromRight (8.0f * k);
+    if (listArea.isEmpty()) layoutContent (area.toNearestInt());
     {
         auto o = octArea;
         if (tm)
@@ -568,6 +590,13 @@ void DegreesSection::paintContent (Graphics& g, Rectangle<float> area)
         auto inner = r.withTrimmedBottom (2.5f).translated (0.0f, 2.5f * press[(size_t) i]);
         const auto textCol = tm ? Colours::white : pal.btnText.interpolatedWith (pal.accentInk, glow);
         const auto dimCol = tm ? Colours::white.withAlpha (0.8f) : pal.btnText.withAlpha (0.55f).interpolatedWith (pal.accentInk, glow);
+        if (pal.pieces.degLabels == 0)
+        {
+            g.setColour (textCol);
+            g.setFont (ctx.fonts.ui (22.0f * k, 2));
+            g.drawText (d.roman, inner, Justification::centred, false);
+            continue;
+        }
         g.setColour (dimCol);
         g.setFont (ctx.fonts.ui (15.5f * k, 1));
         g.drawText (d.roman, inner.withHeight (inner.getHeight() * 0.42f).translated (0.0f, 6.0f * k), Justification::centred, false);
@@ -981,7 +1010,8 @@ void CircleSection::paintContent (Graphics& g, Rectangle<float> area)
         const int i = circleIndexOfPc (pc);
         const float a = (float) i * seg - MathConstants<float>::halfPi;
         const auto pos = c + Point<float> (std::cos (a), std::sin (a)) * rn;
-        const auto col = pal.rainbow ? pal.noteColour (pc) : pal.noteTag (ni++);
+        const auto col = pal.noteColour (pc);   // del mismo color que las teclas (y arcoíris si está prendido)
+        ++ni;
         animating = true;
         if (nodes == 2) continue;
         const float pulse = pcs.anim ? 1.0f + 0.14f * (float) std::sin (t * 4.0 + (double) i) : 1.0f;
@@ -1003,6 +1033,37 @@ void CircleSection::paintContent (Graphics& g, Rectangle<float> area)
         g.setColour (Colours::white.withAlpha (0.9f * gl));
         g.drawEllipse (pos.x - rr, pos.y - rr, rr * 2.0f, rr * 2.0f, 1.5f * k);
     }
+    (void) ni;
+
+    // Abajo a un lado: nombres de las notas en inglés o español (para todo MidiCat)
+    langArea = {};
+    if (! tm && ! v.hideParams)
+    {
+        langArea = Rectangle<float> (plate.getRight() - 14.0f * k - 70.0f * k, plate.getBottom() - 12.0f * k - 24.0f * k, 70.0f * k, 24.0f * k);
+        const float rr = langArea.getHeight() * 0.5f;
+        const bool dark = darkDisc || (cskin == 4) || pal.night;
+        g.setColour (dark ? Colours::white.withAlpha (0.08f) : Colours::black.withAlpha (0.06f));
+        g.fillRoundedRectangle (langArea, rr);
+        g.setColour ((dark ? Colours::white : pal.text).withAlpha (hoverLang ? 0.35f : 0.18f));
+        g.drawRoundedRectangle (langArea.reduced (0.5f), rr, 1.0f);
+        auto half = langArea.reduced (2.0f * k);
+        auto en = half.removeFromLeft (half.getWidth() * 0.5f);
+        auto es = half;
+        auto& on = v.latin ? es : en;
+        g.setColour (acc);
+        g.fillRoundedRectangle (on, on.getHeight() * 0.5f);
+        g.setFont (ctx.fonts.ui (12.0f * k, 2));
+        const auto off = dark && cskin != 0 ? Colours::white.withAlpha (0.7f) : (pal.night ? Colours::white.withAlpha (0.7f) : pal.text.withAlpha (0.6f));
+        g.setColour (v.latin ? off : accInk);
+        g.drawText ("EN", en, Justification::centred, false);
+        g.setColour (v.latin ? accInk : off);
+        g.drawText ("ES", es, Justification::centred, false);
+    }
+}
+
+String CircleSection::getTooltip()
+{
+    return hoverLang ? U8 ("Nombres de las notas: EN = C D E (inglés), ES = Do Re Mi (español)") : String();
 }
 
 // Líneas rectas entre las notas (cruzan el centro); con puntos intermedios para que la luz las recorra
@@ -1025,6 +1086,11 @@ void CircleSection::buildStraight (const std::vector<int>& idx, float rn, std::v
 
 void CircleSection::mouseDown (const MouseEvent& e)
 {
+    if (langArea.contains (e.position))
+    {
+        if (onLatin) onLatin (! ctx.vis.latin);
+        return;
+    }
     int i; bool minor;
     if (ringAt (e.position, i, minor) && onKeyClicked)
         onKeyClicked (minor ? theory::pcOf (majorPcAt (i) + 9) : majorPcAt (i), minor);
@@ -1032,19 +1098,20 @@ void CircleSection::mouseDown (const MouseEvent& e)
 
 void CircleSection::mouseMove (const MouseEvent& e)
 {
+    const bool lang = langArea.contains (e.position);
     int i = -1; bool minor = false;
-    if (! ringAt (e.position, i, minor)) i = -1;
-    if (i != hoverIndex || minor != hoverMinor)
+    if (lang || ! ringAt (e.position, i, minor)) i = -1;
+    if (i != hoverIndex || minor != hoverMinor || lang != hoverLang)
     {
-        hoverIndex = i; hoverMinor = minor;
-        setMouseCursor (i >= 0 ? MouseCursor::PointingHandCursor : MouseCursor::NormalCursor);
+        hoverIndex = i; hoverMinor = minor; hoverLang = lang;
+        setMouseCursor (i >= 0 || lang ? MouseCursor::PointingHandCursor : MouseCursor::NormalCursor);
         repaint();
     }
 }
 
 void CircleSection::mouseExit (const MouseEvent&)
 {
-    if (hoverIndex != -1) { hoverIndex = -1; repaint(); }
+    if (hoverIndex != -1 || hoverLang) { hoverIndex = -1; hoverLang = false; repaint(); }
 }
 
 //==============================================================================
@@ -1056,7 +1123,7 @@ KeyboardSection::KeyboardSection (UiContext& c)
       soundBtn (c, "Sonido"),
       pedalBtn (c, {}, U8 ("Sostiene las notas como el pedal de un piano (sin pedal físico)"), "Pedal"),
       keysColourBtn (c, "keys", "Color y forma de las teclas", "Teclas"),
-      uiColourBtn (c, "palette", U8 ("Personaliza todo: estilo, teclas, pantalla, grados, círculo, pentagrama, formas y movimiento"), "Interfaz"),
+      uiColourBtn (c, "palette", U8 ("Personalizar: estilo, temas, colores y movimiento (cada pieza tiene su propio botoncito)"), "Interfaz"),
       leftBtn (c, "left", U8 ("Bajar una octava")), rightBtn (c, "right", U8 ("Subir una octava")),
       oct2 (c, {}, "2 octavas", "2"), oct3 (c, {}, "3 octavas", "3"), oct4 (c, {}, "4 octavas", "4")
 {
@@ -1111,8 +1178,11 @@ void KeyboardSection::layoutContent (Rectangle<int> areaI)
 
         auto R = rightCheek;
         const bool det = detachBtn.isVisible();
-        pedalBtn.setBounds (Rectangle<float> (R.getX(), R.getY(), R.getWidth() - (det ? 40.0f * k : 0.0f), 48.0f * k).toNearestInt());
+        const bool tune = tuneBtn.isVisible();
+        const float icons = (det ? 34.0f * k : 0.0f) + (tune ? 34.0f * k : 0.0f);
+        pedalBtn.setBounds (Rectangle<float> (R.getX(), R.getY(), R.getWidth() - (icons > 0.0f ? icons + 6.0f * k : 0.0f), 48.0f * k).toNearestInt());
         if (det) detachBtn.setBounds (Rectangle<float> (R.getRight() - 32.0f * k, R.getY() + 9.0f * k, 32.0f * k, 30.0f * k).toNearestInt());
+        if (tune) tuneBtn.setBounds (Rectangle<float> (R.getRight() - (det ? 66.0f : 32.0f) * k, R.getY() + 9.0f * k, 32.0f * k, 30.0f * k).toNearestInt());
         scaleSw.setBounds (Rectangle<float> (R.getRight() - 56.0f * k, R.getY() + 60.0f * k, 54.0f * k, 30.0f * k).toNearestInt());
         auto nav = Rectangle<float> (R.getX(), R.getY() + 102.0f * k, R.getWidth(), 40.0f * k);
         leftBtn.setBounds (nav.removeFromLeft (40.0f * k).toNearestInt());
@@ -1128,24 +1198,22 @@ void KeyboardSection::layoutContent (Rectangle<int> areaI)
     {
         leftCheek = rightCheek = {};
         keysArea = area.reduced (14.0f * k, 14.0f * k);
+        tuneBtn.setVisible (false);
     }
 }
 
-KeyboardSection::KeyGeom KeyboardSection::keyRect (int note) const
+KeyboardSection::KeyGeom KeyboardSection::geomFor (int note, Rectangle<float> ka, float viewWhite, float viewWhites, int st)
 {
-    const auto& v = ctx.vis;
-    const float ww = keysArea.getWidth() / jmax (1.0f, v.viewWhites);
-    const int st = ctx.vis.pal.keyStyle;
-    const float x0 = keysArea.getX();
-    const auto ka = keysArea;
+    const float ww = ka.getWidth() / jmax (1.0f, viewWhites);
+    const float x0 = ka.getX();
     if (! isBlackPc (note % 12))
     {
-        const float x = x0 + ((float) whiteIndexOf (note) - v.viewWhite) * ww;
+        const float x = x0 + ((float) whiteIndexOf (note) - viewWhite) * ww;
         if (st == keysPastilla) return { Rectangle<float> (x, ka.getY() + ka.getHeight() * 0.33f, ww, ka.getHeight() * 0.67f), false };
         if (st == keysBotones)  return { Rectangle<float> (x, ka.getY() + ka.getHeight() * 0.52f, ww, ka.getHeight() * 0.48f), false };
         return { Rectangle<float> (x, ka.getY(), ww, ka.getHeight()), false };
     }
-    const float cx = x0 + ((float) whiteIndexOf (note - 1) + 1.0f - v.viewWhite) * ww;
+    const float cx = x0 + ((float) whiteIndexOf (note - 1) + 1.0f - viewWhite) * ww;
     if (st == keysPastilla)
     {
         const float d = jmin (ww * 0.74f, ka.getHeight() * 0.28f);
@@ -1154,6 +1222,11 @@ KeyboardSection::KeyGeom KeyboardSection::keyRect (int note) const
     if (st == keysBotones) return { Rectangle<float> (cx - ww * 0.5f, ka.getY(), ww, ka.getHeight() * 0.48f), true };
     const float bw = ww * (st == keysPlana ? 0.6f : 0.62f);
     return { Rectangle<float> (cx - bw * 0.5f, ka.getY(), bw, ka.getHeight() * (st == keysPlana ? 0.58f : 0.6f)), true };
+}
+
+KeyboardSection::KeyGeom KeyboardSection::keyRect (int note) const
+{
+    return geomFor (note, keysArea, ctx.vis.viewWhite, ctx.vis.viewWhites, ctx.vis.pal.keyStyle);
 }
 
 int KeyboardSection::noteAt (Point<float> p, float& velocity) const
@@ -1176,15 +1249,25 @@ int KeyboardSection::noteAt (Point<float> p, float& velocity) const
 void KeyboardSection::drawKey (Graphics& g, int n, const KeyGeom& kg) const
 {
     const auto& v = ctx.vis;
-    const auto& pal = v.pal;
+    KeyPaint kp;
+    kp.level = v.level[(size_t) n];
+    kp.susOnly = (v.down[(size_t) n] == 0 && v.sus[(size_t) n] > 0) ? 0.55f : 1.0f;
+    kp.inScale = v.highlight && (v.scaleMask & (1u << (unsigned) (n % 12))) != 0;
+    kp.isRoot = n % 12 == theory::pcOf (v.keyRoot);
+    kp.latin = v.latin;
+    paintKey (g, ctx.fonts, v.pal, n, kg, k, kp);
+}
+
+void KeyboardSection::paintKey (Graphics& g, const Fonts& fonts, const Skin& pal, int n, const KeyGeom& kg, float k, const KeyPaint& kp)
+{
     const int st = pal.keyStyle;
-    const float l = v.level[(size_t) n];
-    const float susOnly = (v.down[(size_t) n] == 0 && v.sus[(size_t) n] > 0) ? 0.55f : 1.0f;
+    const float l = kp.level;
+    const float susOnly = kp.susOnly;
     const float pressDepth = jmin (1.0f, l * 1.4f) * 2.0f * k;
     const auto litCol = pal.noteColour (n);
     const int pc = n % 12;
-    const bool inScale = v.highlight && (v.scaleMask & (1u << (unsigned) pc)) != 0;
-    const bool isRoot = pc == theory::pcOf (v.keyRoot);
+    const bool inScale = kp.inScale;
+    const bool isRoot = kp.isRoot;
     const float ww = kg.r.getWidth();
 
     auto r = kg.r;
@@ -1226,8 +1309,8 @@ void KeyboardSection::drawKey (Graphics& g, int n, const KeyGeom& kg) const
         {
             const bool darkKey = pal.keyW.getPerceivedBrightness() < 0.5f;
             g.setColour (l > 0.3f ? pal.accentInk : (darkKey ? Colours::white.withAlpha (0.75f) : pal.dim));
-            g.setFont (draw::fitUi (ctx.fonts, "Do8", 13.5f * k, ww - 4.0f, 2));
-            g.drawText ((v.latin ? String ("Do") : String ("C")) + String (n / 12 - 1), face.withTrimmedTop (face.getHeight() - 22.0f * k), Justification::centred, false);
+            g.setFont (draw::fitUi (fonts, "Do8", 13.5f * k, ww - 4.0f, 2));
+            g.drawText ((kp.latin ? String ("Do") : String ("C")) + String (n / 12 - 1), face.withTrimmedTop (face.getHeight() - 22.0f * k), Justification::centred, false);
         }
         return;
     }
@@ -1260,6 +1343,28 @@ void KeyboardSection::drawKey (Graphics& g, int n, const KeyGeom& kg) const
         if (isRoot) g.fillRoundedRectangle (dc.x - d * 0.5f, dc.y - d * 0.5f, d, d, d * 0.2f);
         else        g.fillEllipse (dc.x - d * 0.3f, dc.y - d * 0.3f, d * 0.6f, d * 0.6f);
     }
+}
+
+void KeyboardSection::paintPreview (Graphics& g, UiContext& ctx, const Skin& pal, Rectangle<float> area, float k)
+{
+    // Una octava (Do a Do) con Do mayor sonando y las marcas de la escala, igual que el teclado
+    draw::recess (g, area, pal, 14.0f * k, pal.body2.interpolatedWith (pal.keyBed, 0.5f));
+    const auto ka = area.reduced (14.0f * k, 12.0f * k);
+    const int first = 60, last = 72;
+    const float whites = 8.0f;
+    const float viewWhite = (float) whiteIndexOf (first);
+    for (int pass = 0; pass < 2; ++pass)
+        for (int n = first; n <= last; ++n)
+        {
+            const auto kg = geomFor (n, ka, viewWhite, whites, pal.keyStyle);
+            if (kg.black != (pass == 1)) continue;
+            KeyPaint kp;
+            kp.level = (n == 60 || n == 64 || n == 67) ? 1.0f : 0.0f;
+            kp.inScale = ! isBlackPc (n % 12);
+            kp.isRoot = n % 12 == 0;
+            kp.latin = ctx.vis.latin;
+            paintKey (g, ctx.fonts, pal, n, kg, k, kp);
+        }
 }
 
 void KeyboardSection::paintContent (Graphics& g, Rectangle<float> area)

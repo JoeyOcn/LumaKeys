@@ -76,10 +76,11 @@ grabar y metrónomo | día/noche y color | ventanas | ocultar y menú.
     Ctrl+D duplica, Ctrl+E divide, Ctrl+U cuantiza, Ctrl+A todo, Ctrl+C / Ctrl+V,
     Ctrl+Z deshace. Ctrl+1 / Ctrl+2 rejilla más fina / más ancha, Ctrl+3 tresillos,
     Ctrl+4 rejilla sí/no. Flechas mueven; Shift+flechas cambian largo u octava.
-    Rueda: subir/bajar. Shift+rueda: a los lados. Ctrl+rueda: zoom.
+    Rueda: subir/bajar. Shift+rueda: a los lados (la barra sigue a tus dedos). Ctrl+rueda: zoom.
     Arrastra arriba/abajo en la regla de compases para hacer zoom.
     Espacio reproduce. Clic derecho: menú con todo.
-  Todo se guarda solo. "Arrastra MIDI" y "Arrastra audio" lo llevan a tu proyecto.
+  Todo se guarda solo. "Arrastra MIDI" lo lleva a tu proyecto con la tonalidad
+  en el nombre. El botón del metrónomo (junto a reproducir) te marca el tiempo.
   En pantalla completa el piano roll se queda al frente de la ventana del plugin.
 - Al tocar con el mouse: entre más abajo das clic en la tecla o el grado, más fuerte suena.
 - Grados (I a VII): a su derecha está la octava en la que suenan; flechita arriba o abajo
@@ -91,31 +92,32 @@ grabar y metrónomo | día/noche y color | ventanas | ocultar y menú.
   ("Aprender los 7 pads" los toma en orden). En Ableton, haz clic en MidiCat primero
   para que las teclas le lleguen.
 
-Personalizar (botón "Interfaz")
--------------------------------
-Todo en un solo panel, y cada cambio se ve al instante (el panel se mueve solo
-para no tapar lo que editas, y también lo puedes arrastrar del título):
-- Estilo: Campo, Sampler, Cristal, Metal, Ritmo, Neón y Papel; día/noche,
-  paletas rápidas, forma de los botones y tus temas.
-- Teclas: forma, arcoíris y colores (encendidas, blancas y negras).
-- Pantalla: diseño (LCD verde, ámbar, hielo, papel, vidrio, neón), letra
-  (pixel, LCD, terminal, futurista, neón, arcade, retro…), forma (recta, pastilla,
-  ovalada), textura, luces (brillo) y cómo cambia al tocar otro acorde.
-- Grados: diseño (pastilla, plano, contorno, pantallitas, colores en fila),
-  forma (cuadrados, pastilla, círculos) y color de la luz.
-- Círculo: diseño (líneas, color, vinilo, neón), cómo pasan las líneas entre
-  las notas (rodean el centro, por debajo, se difuminan o por encima), grosor,
-  tamaño del botón del centro, puntos, textura, placa y color.
-- Pentagrama: diseño (papel, pizarra, transparente, neón, pantalla), textura,
-  marco y colores de tinta y papel.
-- Movimiento: animaciones sí/no, velocidad, cómo se encienden las teclas,
-  destello, la luz del círculo y paneles con transición.
-El selector de color es preciso: cuadro y tono (Shift = movimiento fino, rueda =
-ajuste), código #hex y R G B (arrastra el número, rueda, o doble clic para escribirlo).
+Personalizar
+------------
+- Cada pieza tiene su botoncito de ajustes (tres rayitas con puntos) en la esquina:
+  pantalla, grados, círculo, pentagrama y teclas. Abre un panel chiquito solo con
+  lo de esa pieza (diseño, forma, letras, colores y, en "Más ajustes", lo demás),
+  sin tapar la pieza. "Volver al estilo" la deja como venía.
+- El botón "Interfaz" (o ☰ > Personalizar) abre lo general:
+  · Estilo: Campo, Sampler, Cristal, Metal, Ritmo, Neón y Papel; día o noche;
+    color principal (cambia todo MidiCat de un jalón), color del cuerpo (exacto),
+    paletas rápidas, colores suaves (más grises, descansan la vista) y forma de
+    los botones.
+  · Temas: temas listos por grupos (Estudio, Retro, Neón, Suaves) que ponen todo
+    con un clic, y los tuyos.
+  · Movimiento: animaciones, velocidad, teclas, la luz del círculo y paneles.
+- Los paneles son de vidrio esmerilado, crecen y se encogen con el plugin, se
+  mueven arrastrando el título y cambian de tamaño arrastrando la esquina de abajo
+  (cada panel recuerda su tamaño). Se cierran con la X, con Esc o con un clic afuera.
+- De día, los paneles, menús y el piano roll son claros.
+- Pantalla: vacía hasta que tocas algo (en su panel puedes elegir que muestre la
+  tonalidad). Grados: por defecto solo I a VII (en su panel: "Grado y acorde").
+- Junto al círculo de quintas: EN / ES para los nombres de las notas (C D E o Do Re Mi).
 
 Presets
 -------
-- Interfaz > Estilo > "Guardar tema": guarda estilo, colores, diseños, formas y movimiento.
+- Interfaz > Temas > "Guardar tema": guarda todo (estilo, colores, cada pieza,
+  movimiento, teclas, nombres de las notas y el acomodo de las ventanas).
 - Botón de ventanas > "Guardar este acomodo…": guarda cómo tienes las ventanas
   separadas, invisibles o minimizadas, para volver a ponerlas igual con un clic.
 

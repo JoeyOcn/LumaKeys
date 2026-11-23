@@ -15,6 +15,7 @@ public:
     bool floating = false;              // vive en su propia ventana
     float k = 1.0f;                     // escala del contenido
     std::function<void()> onDetach;
+    std::function<void()> onTune;       // botoncito para ajustar solo esta pieza
 
     void paint (juce::Graphics&) override;
     void resized() override;
@@ -25,10 +26,11 @@ protected:
     virtual void paintContent (juce::Graphics&, juce::Rectangle<float> area) = 0;
     virtual void layoutContent (juce::Rectangle<int>) {}
     virtual bool wantsDetachButton() const { return true; }
+    virtual bool wantsTuneButton() const { return true; }
     void caption (juce::Graphics&, juce::Rectangle<float> area, const juce::String& text, juce::Colour colour);
 
     UiContext& ctx;
-    PushButton detachBtn;
+    PushButton detachBtn, tuneBtn;
 };
 
 //==============================================================================
@@ -73,6 +75,7 @@ public:
 
 protected:
     void paintContent (juce::Graphics&, juce::Rectangle<float>) override;
+    void layoutContent (juce::Rectangle<int>) override;
     bool wantsDetachButton() const override { return false; }
 
 private:
@@ -86,11 +89,13 @@ private:
 };
 
 //==============================================================================
-class CircleSection : public Section
+class CircleSection : public Section, public juce::TooltipClient
 {
 public:
     explicit CircleSection (UiContext& c);
     std::function<void (int rootPc, bool minor)> onKeyClicked;
+    std::function<void (bool latin)> onLatin;     // interruptor EN / ES de los nombres de las notas
+    juce::String getTooltip() override;
     void mouseDown (const juce::MouseEvent&) override;
     void mouseMove (const juce::MouseEvent&) override;
     void mouseExit (const juce::MouseEvent&) override;
@@ -107,6 +112,8 @@ private:
     float radius = 100.0f;
     int hoverIndex = -1;
     bool hoverMinor = false;
+    juce::Rectangle<float> langArea;
+    bool hoverLang = false;
 
     // Animación de la constelación
     uint16_t shownMask = 0;
@@ -130,6 +137,9 @@ public:
     std::function<void (int octaves)> onOctaves;
 
     void setRange (int startC, int octaves);
+
+    // Muestra de las teclas (la misma forma y colores del teclado de verdad)
+    static void paintPreview (juce::Graphics&, UiContext&, const Skin&, juce::Rectangle<float> area, float k);
     int firstNote() const { return startC; }
     int lastNote() const { return startC + 12 * octaves; }
 
@@ -143,6 +153,9 @@ protected:
 
 private:
     struct KeyGeom { juce::Rectangle<float> r; bool black; };
+    struct KeyPaint { float level = 0.0f, susOnly = 1.0f; bool inScale = false, isRoot = false, latin = false; };
+    static KeyGeom geomFor (int note, juce::Rectangle<float> keysArea, float viewWhite, float viewWhites, int style);
+    static void paintKey (juce::Graphics&, const Fonts&, const Skin&, int note, const KeyGeom&, float k, const KeyPaint&);
     KeyGeom keyRect (int note) const;
     int noteAt (juce::Point<float>, float& velocity) const;
     bool showCheeks() const;

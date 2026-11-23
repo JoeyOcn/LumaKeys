@@ -10,7 +10,7 @@ Funciona como plugin **VST3** y **AU** (Ableton Live 12 y otros DAW) y como **ap
 - Círculo de quintas: las notas que tocas se unen con líneas animadas (rodean el centro, pasan por debajo, se difuminan o pasan por encima).
 - Teclado de 2, 3 o 4 octavas que sigue lo que tocas, con 4 formas de teclas (Pastilla, Botones, Plana y Clásica) y color a tu gusto.
 - Siete estilos, cada uno con modo día y noche: **Campo**, **Sampler**, **Cristal**, **Metal**, **Ritmo**, **Neón** y **Papel**, más 12 paletas rápidas.
-- Personalizar todo en un solo panel: diseños, letras, texturas, formas y luces de la pantalla, los grados, el círculo y el pentagrama; movimiento y animaciones; selector de color preciso (hex, RGB, movimiento fino).
+- Personalizar: un botoncito en cada pieza (pantalla, grados, círculo, pentagrama, teclas) para ajustar solo esa pieza; panel general con estilos, temas listos, color principal, colores suaves y movimiento. Paneles de vidrio esmerilado que escalan con el plugin y cambian de tamaño desde la esquina.
 - Nueve sonidos: piano de cola, de concierto, suave, de bar, eléctrico, eléctrico con trémolo, celesta, de juguete y clavecín.
 - Botón **Pedal** en pantalla: sostiene las notas sin pedal físico.
 - Cada parte se puede separar en su propia ventana, minimizar y regresar a su lugar con "Restablecer".
