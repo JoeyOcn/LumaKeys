@@ -310,6 +310,8 @@ Prefs::Prefs()
     metroFollowHost = file->getBoolValue ("metroFollowHost", true);
     countIn         = file->getBoolValue ("countIn", true);
     recordMouse     = file->getBoolValue ("recordMouse", true);
+    recordAudio     = file->getBoolValue ("recordAudio", true);
+    degreeOctave    = jlimit (-2, 2, file->getIntValue ("degreeOctave", 0));
 
     if (auto xml = file->getXmlValue ("themes"))
         for (auto* e : xml->getChildIterator())
@@ -397,6 +399,8 @@ void Prefs::save (bool notify)
     file->setValue ("metroFollowHost", metroFollowHost);
     file->setValue ("countIn", countIn);
     file->setValue ("recordMouse", recordMouse);
+    file->setValue ("recordAudio", recordAudio);
+    file->setValue ("degreeOctave", degreeOctave);
 
     XmlElement tx ("THEMES");
     for (auto& t : themes)

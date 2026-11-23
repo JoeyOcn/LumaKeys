@@ -6,12 +6,168 @@ MidiRecorder::MidiRecorder()
 {
     ring.resize ((size_t) fifo.getTotalSize());
     take.reserve (4096);
+    writerThread.startThread();
     startTimerHz (20);
 }
 
 MidiRecorder::~MidiRecorder()
 {
     stopTimer();
+    closeWriter (false);
+    writerThread.stopThread (2000);
+}
+
+//==============================================================================
+bool MidiRecorder::openWriter (const File& target, double sr)
+{
+    closeWriter (false);
+    target.getParentDirectory().createDirectory();
+    auto temp = target.getParentDirectory().getNonexistentChildFile ("~" + target.getFileNameWithoutExtension(), ".tmp", false);
+    auto fos = std::make_unique<FileOutputStream> (temp);
+    if (! fos->openedOk()) return false;
+    std::unique_ptr<OutputStream> os (fos.release());
+    WavAudioFormat wav;
+    auto w = wav.createWriterFor (os, AudioFormatWriterOptions().withSampleRate (sr > 0.0 ? sr : 44100.0)
+                                                                .withNumChannels (2)
+                                                                .withBitsPerSample (24));
+    if (w == nullptr) { temp.deleteFile(); return false; }
+    auto tw = std::make_unique<AudioFormatWriter::ThreadedWriter> (w.release(), writerThread, 1 << 19);   // ~11 s de colchón por si el disco se atora
+    {
+        const SpinLock::ScopedLockType sl (writerLock);
+        writer = std::move (tw);
+    }
+    writerTemp = temp;
+    writerTarget = target;
+    audioDone.store (false);
+    return true;
+}
+
+void MidiRecorder::closeWriter (bool keep)
+{
+    std::unique_ptr<AudioFormatWriter::ThreadedWriter> old;
+    {
+        const SpinLock::ScopedLockType sl (writerLock);
+        old = std::move (writer);
+    }
+    audioMode.store (0);
+    if (old == nullptr) return;
+    old.reset();   // termina de escribir y cierra el archivo
+    if (keep && writerTarget != File())
+    {
+        writerTarget.deleteFile();
+        if (writerTemp.moveFileTo (writerTarget) && onAudioSaved) onAudioSaved (writerTarget);
+    }
+    else writerTemp.deleteFile();
+    writerTemp = writerTarget = File();
+}
+
+void MidiRecorder::writeAudio (const AudioBuffer<float>& buffer, int n) noexcept
+{
+    const int mode = audioMode.load();
+    if (mode == 0 || audioDone.load()) return;
+    const SpinLock::ScopedTryLockType sl (writerLock);
+    if (! sl.isLocked() || writer == nullptr) return;
+
+    const int chans = buffer.getNumChannels();
+    if (chans <= 0) return;
+    auto writeRange = [&] (int from, int to)
+    {
+        if (to <= from) return;
+        const float* ptrs[2] = { buffer.getReadPointer (0, from), buffer.getReadPointer (jmin (1, chans - 1), from) };
+        writer->write (ptrs, to - from);
+    };
+
+    if (mode == 2)
+    {
+        if (! bounceRunning.load()) return;
+        writeRange (0, n);
+        if (bouncePos.load() >= bounceLen.load()) { bounceRunning.store (false); audioDone.store (true); }
+        return;
+    }
+
+    // Grabando: desde el tiempo 1 (con metrónomo) o desde la primera nota, hasta un poquito después de parar
+    const int64_t blockEnd = clock.load();
+    const int64_t blockStart = blockEnd - n;
+    const int64_t from = audioFrom.load();
+    if (from < 0) return;
+    const int64_t until = audioUntil.load();
+    const int64_t s0 = jmax (blockStart, from);
+    const int64_t s1 = until >= 0 ? jmin (blockEnd, until) : blockEnd;
+    writeRange ((int) (s0 - blockStart), (int) (s1 - blockStart));
+    if (until >= 0 && blockEnd >= until) audioDone.store (true);
+}
+
+//==============================================================================
+bool MidiRecorder::startBounce (const File& midiFile)
+{
+    if (isBouncing() || st.load() != 0) return false;
+    MidiFile mf;
+    FileInputStream in (midiFile);
+    if (! in.openedOk() || ! mf.readFrom (in) || mf.getTimeFormat() <= 0) return false;
+    mf.convertTimestampTicksToSeconds();
+
+    const double sr = rate.load();
+    std::vector<BEv> evs;
+    double last = 0.0;
+    for (int t = 0; t < mf.getNumTracks(); ++t)
+    {
+        auto* tr = mf.getTrack (t);
+        for (int i = 0; i < tr->getNumEvents(); ++i)
+        {
+            const auto& m = tr->getEventPointer (i)->message;
+            if (m.isMetaEvent() || m.isSysEx() || m.getRawDataSize() > 3) continue;
+            BEv e;
+            e.sample = (int64_t) std::llround (m.getTimeStamp() * sr);
+            e.size = (uint8_t) m.getRawDataSize();
+            for (int k = 0; k < (int) e.size; ++k) e.d[k] = m.getRawData()[k];
+            evs.push_back (e);
+            last = jmax (last, m.getTimeStamp());
+        }
+    }
+    if (evs.empty()) return false;
+    std::stable_sort (evs.begin(), evs.end(), [] (const BEv& a, const BEv& b) { return a.sample < b.sample; });
+
+    if (! openWriter (audioFileFor (midiFile), sr)) return false;
+    bounceEvents = std::move (evs);
+    bounceNext = 0;
+    bouncePos.store (0);
+    bounceLen.store ((int64_t) ((last + 2.0) * sr));   // dos segundos extra para que se apague solo
+    bounceTarget = audioFileFor (midiFile);
+    audioMode.store (2);
+    bounceStop.store (false);
+    bounceArm.store (true);
+    return true;
+}
+
+void MidiRecorder::cancelBounce()
+{
+    if (! isBouncing()) return;
+    bounceStop.store (true);
+}
+
+float MidiRecorder::bounceProgress() const noexcept
+{
+    return jlimit (0.0f, 1.0f, (float) ((double) bouncePos.load() / (double) jmax ((int64_t) 1, bounceLen.load())));
+}
+
+void MidiRecorder::injectBounce (MidiBuffer& midi, int n) noexcept
+{
+    if (bounceArm.exchange (false)) bounceRunning.store (true);
+    if (! bounceRunning.load()) return;
+    if (bounceStop.load())
+    {
+        for (int ch = 1; ch <= 16; ++ch) midi.addEvent (MidiMessage::allNotesOff (ch), 0);
+        bounceRunning.store (false);
+        audioDone.store (true);
+        return;
+    }
+    const int64_t pos = bouncePos.load();
+    while (bounceNext < bounceEvents.size() && bounceEvents[bounceNext].sample < pos + n)
+    {
+        const auto& e = bounceEvents[bounceNext++];
+        midi.addEvent (e.d, (int) e.size, (int) jlimit ((int64_t) 0, (int64_t) n - 1, e.sample - pos));
+    }
+    bouncePos.store (pos + n);
 }
 
 File MidiRecorder::folder()
@@ -29,9 +185,14 @@ Array<File> MidiRecorder::recordings()
 
 void MidiRecorder::start()
 {
-    if (st.load() != 0) return;
+    if (st.load() != 0 || isBouncing()) return;
     take.clear();
     stopReq.store (false);
+    audioFrom.store (-1);
+    audioUntil.store (-1);
+    if (recordAudio.load() && audioMode.load() == 0)
+        if (openWriter (folder().getChildFile ("toma.wav"), rate.load()))
+            audioMode.store (1);
     startReq.store (true);
 }
 
@@ -104,6 +265,7 @@ void MidiRecorder::process (const MidiBuffer& played, const MidiBuffer& mouse, i
                 origin.store (now - (int64_t) std::llround (inBar * spb));
                 st.store (2);
             }
+            audioFrom.store (jmax (now, origin.load()));
         }
         else
         {
@@ -117,14 +279,24 @@ void MidiRecorder::process (const MidiBuffer& played, const MidiBuffer& mouse, i
     {
         stopAt.store (now - origin.load());
         st.store (0);
+        audioUntil.store (now + (int64_t) (sampleRate * 1.5));   // un poquito más para que no se corte el sonido
     }
 
     const int s = st.load();
     if (s != 0)
     {
         const int64_t base = now - origin.load();
+        const bool takeMouse = recordMouse.load();
+        if (audioFrom.load() < 0)
+        {
+            // Sin metrónomo, el audio empieza junto con la primera nota
+            auto firstNote = [] (const MidiBuffer& b) { for (const auto meta : b) if (meta.getMessage().isNoteOn()) return meta.samplePosition; return -1; };
+            int fp = firstNote (played);
+            if (takeMouse) { const int fm = firstNote (mouse); if (fm >= 0 && (fp < 0 || fm < fp)) fp = fm; }
+            if (fp >= 0) audioFrom.store (now + fp);
+        }
         for (const auto meta : played) push (meta.getMessage(), base + meta.samplePosition);
-        if (recordMouse.load())
+        if (takeMouse)
             for (const auto meta : mouse) push (meta.getMessage(), base + meta.samplePosition);
         if (s == 1 && now + n >= origin.load()) st.store (2);
     }
@@ -148,6 +320,23 @@ void MidiRecorder::timerCallback()
         finish();
         stopAt.store (-1);
         take.clear();
+        if (audioMode.load() == 1 && audioFrom.load() < 0) closeWriter (false);   // no se tocó nada
+    }
+    if (audioDone.load())
+    {
+        audioDone.store (false);
+        const int mode = audioMode.load();
+        if (mode == 1)
+        {
+            if (! takeEmpty && takeBase.isNotEmpty()) writerTarget = folder().getChildFile (takeBase + ".wav");
+            closeWriter (! takeEmpty && takeBase.isNotEmpty());
+        }
+        else if (mode == 2)
+        {
+            const bool ok = ! bounceStop.load();
+            bounceEvents.clear();
+            closeWriter (ok);
+        }
     }
 }
 
@@ -168,6 +357,8 @@ void MidiRecorder::finish()
     }
     bool anyNote = false;
     for (auto& e : evs) if ((e.d[0] & 0xf0) == 0x90 && e.d[2] > 0) anyNote = true;
+    takeEmpty = ! anyNote;
+    takeBase = {};
     if (! anyNote) { if (onEmpty) onEmpty(); return; }
 
     int64_t shift = 0;
@@ -218,6 +409,7 @@ void MidiRecorder::finish()
     dir.createDirectory();
     auto name = "Midi Cat " + Time::getCurrentTime().formatted ("%Y-%m-%d %H.%M.%S");
     auto file = dir.getNonexistentChildFile (name, ".mid", false);
+    takeBase = file.getFileNameWithoutExtension();
     FileOutputStream os (file);
     if (os.openedOk())
     {

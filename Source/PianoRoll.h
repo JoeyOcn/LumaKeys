@@ -3,7 +3,10 @@
 #include "Views.h"
 
 //==============================================================================
-// Piano roll estilo FL Studio para editar los .mid de Midi Cat
+// Piano roll para editar los .mid de Midi Cat, con los mismos movimientos que Ableton:
+// flecha por defecto, lápiz con B, doble clic pone o quita notas, las orillas alargan,
+// Alt/Ctrl + arrastrar copia, Cmd/Alt + arrastrar cambia la fuerza, Cmd+D duplica,
+// Cmd+E divide, Cmd+U cuantiza, Cmd+1/2/3/4 cambian la rejilla.
 class PianoRoll : public juce::Component,
                   private juce::ScrollBar::Listener,
                   private juce::Timer,
@@ -16,6 +19,9 @@ public:
     bool loadFile (const juce::File&);
     const juce::File& getFile() const { return file; }
     std::function<void()> onSaved;
+    std::function<void (const juce::File&)> onConvertToAudio;
+    std::function<float()> audioProgress;   // 0..1 mientras se pasa a audio este archivo; -1 si no
+    void setStatus (const juce::String& s) { status = s; repaint (0, 0, getWidth(), 64); }
 
     void paint (juce::Graphics&) override;
     void resized() override;
@@ -25,39 +31,46 @@ public:
     void mouseMove (const juce::MouseEvent&) override;
     void mouseDoubleClick (const juce::MouseEvent&) override;
     void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
+    void mouseMagnify (const juce::MouseEvent&, float scaleFactor) override;
     bool keyPressed (const juce::KeyPress&) override;
 
     struct Note { int note = 60; double start = 0.0, length = 0.25; int velocity = 100; bool selected = false; };
 
 private:
-    enum Tool { draw, select, slice, erase };
-    enum Drag { none, moving, resizing, marquee, erasing, slicing, velocity, panning, keysPreview };
+    enum Drag { none, moving, resizeEnd, resizeStart, marquee, drawing, velocityLane, noteVelocity, panning, keysPreview, ruler };
 
     // Archivo
     void save();
-    void pushUndo();
+    void commit();           // guarda y deja el paso para deshacer
     void undo();
     void redo();
 
     // Edición
+    bool anySelected() const;
     void deleteSelected();
     void selectAll (bool sel);
     void copySelected (bool cut);
     void paste();
     void duplicate();
     void quantize();
+    void splitAt (double beat, bool onlySelected);
     void transpose (int semis);
     void nudge (int steps);
-    void setTool (Tool t);
+    void stretch (int steps);
+    void setDraw (bool on);
     void showSnapMenu();
-    int noteAt (juce::Point<float> p, bool& nearEnd) const;
-    double snapValue() const;
+    void showContextMenu (int noteIndex, double beat);
+    void addNote (int pitch, double start);
+    int noteAt (juce::Point<float> p, int& edge) const;   // edge: -1 inicio, 0 cuerpo, 1 final
+    double grid() const;          // tamaño de la rejilla en tiempos (0 = sin ajuste)
+    double gridOrDefault() const;
     double snapRound (double b) const;
     double snapFloor (double b) const;
     double totalBeats() const;
-    juce::String snapName() const;
+    juce::String gridName() const;
     void previewPitch (int note, int vel);
     void updateScrollBars();
+    void clampView();
     void togglePlay();
     void stopPlay();
 
@@ -87,29 +100,32 @@ private:
     std::vector<std::vector<Note>> undoStack, redoStack;
     static std::vector<Note> clipboard;
 
-    Tool tool = draw;
-    int snapIndex = 2;
-    double lastLength = 1.0;
+    bool drawMode = false;
+    int gridIndex = 1;        // 1/16
+    bool triplets = false, snapOn = true;
     int lastVelocity = 100;
-    double cursorBeat = 0.0;
+    double insertBeat = 0.0;
 
-    // Vista
+    // Vista (con decimales para que se mueva suave)
     double scrollBeat = 0.0;
+    double topRow = 84.0;
     float pxPerBeat = 80.0f;
     float rowH = 16.0f;
-    int topNote = 84;
 
     // Arrastre
     Drag drag = none;
     int dragNote = -1;
     juce::Point<float> downPos, lastPos;
     std::vector<Note> dragOrig, preEdit;
-    bool changed = false;
+    bool changed = false, fineDecided = false, fineMode = false;
     juce::Rectangle<float> marqueeRect;
+    int drawPitch = -1;
+    double rulerAnchorBeat = 0.0;
+    float rulerStartPx = 80.0f;
     int previewNote = -1;
     double previewOffAt = 0.0;
 
-    // Reproducción
+    // Reproducir
     struct Ev { double t; int note; float vel; bool on; };
     std::vector<Ev> playEvents;
     size_t playNext = 0;
@@ -120,9 +136,11 @@ private:
     juce::CriticalSection playLock;
 
     juce::String status;
-    PushButton drawBtn, selectBtn, sliceBtn, eraseBtn, snapBtn, quantBtn, undoBtn, redoBtn, playBtn;
+    juce::Font noteFont, smallFont, rulerFont;
+    PushButton drawBtn, gridBtn, quantBtn, splitBtn, dupBtn, undoBtn, redoBtn, playBtn;
     class DragOut;
-    std::unique_ptr<DragOut> dragOut;
+    std::unique_ptr<DragOut> dragOut, audioOut;
+    int audioState = -2, audioTick = 0;   // para repintar el chip de audio solo cuando cambia
     juce::ScrollBar hbar { false }, vbar { true };
 };
 

@@ -360,6 +360,17 @@ namespace draw
             p.startNewSubPath (P (7.5f, 8)); p.lineTo (P (12, 3.5f)); p.lineTo (P (16.5f, 8));
             p.startNewSubPath (P (5, 12)); p.lineTo (P (5, 20)); p.lineTo (P (19, 20)); p.lineTo (P (19, 12));
         }
+        else if (name == "dup")
+        {
+            p.addRoundedRectangle (Rectangle<float> (P (4, 7), P (14, 17)), s * 0.06f);
+            p.addRoundedRectangle (Rectangle<float> (P (10, 4), P (20, 14)), s * 0.06f);
+        }
+        else if (name == "wave")
+        {
+            const float xs[] = { 4, 7, 10, 13, 16, 19 };
+            const float hs[] = { 3, 7, 11, 6, 9, 4 };
+            for (int i = 0; i < 6; ++i) { p.startNewSubPath (P (xs[i], 12 - hs[i] * 0.7f)); p.lineTo (P (xs[i], 12 + hs[i] * 0.7f)); }
+        }
         else if (name == "plus")  { p.startNewSubPath (P (12, 6)); p.lineTo (P (12, 18)); p.startNewSubPath (P (6, 12)); p.lineTo (P (18, 12)); }
         else if (name == "minus") { p.startNewSubPath (P (6, 12)); p.lineTo (P (18, 12)); }
         else if (name == "tap")
@@ -685,12 +696,30 @@ void PushButton::paint (Graphics& g)
     }
     else
     {
-        if (hover > 0.01f || press > 0.01f)
+        const float rad = jmin (b.getWidth(), b.getHeight()) * 0.3f;
+        if (active && ! lightOnDark)
         {
-            g.setColour ((lightOnDark ? Colours::white : pal.text).withAlpha (0.10f * hover + 0.08f * press));
-            g.fillRoundedRectangle (b, jmin (b.getWidth(), b.getHeight()) * 0.3f);
+            // Prendido: como una tecla iluminada dentro de la bandeja
+            const auto fill = activeColour.isTransparent() ? pal.accent : activeColour;
+            g.setColour (fill.withMultipliedBrightness (1.0f - 0.08f * press));
+            g.fillRoundedRectangle (b, rad);
+            col = activeColour.isTransparent() ? pal.accentInk : Colours::white;
         }
-        col = lightOnDark ? Colours::white : (active ? pal.accent : pal.text);
+        else
+        {
+            if (hover > 0.01f || press > 0.01f)
+            {
+                g.setColour ((lightOnDark ? Colours::white : pal.text).withAlpha (0.10f * hover + 0.10f * press));
+                g.fillRoundedRectangle (b, rad);
+            }
+            col = lightOnDark ? Colours::white : (! iconColour.isTransparent() ? iconColour : pal.text);
+        }
+        content = b.translated (0.0f, press);
+        if (flash > 0.01f)
+        {
+            g.setColour ((active ? Colours::white : pal.accent).withAlpha (0.6f * flash));
+            g.drawRoundedRectangle (b.reduced (1.5f), rad, 2.0f);
+        }
     }
 
     const bool showText = label.isNotEmpty() && content.getWidth() > content.getHeight() * 1.8f;
@@ -806,6 +835,8 @@ RailBar::RailBar (UiContext& c)
     for (Component* comp : std::initializer_list<Component*> { &midi, &key, &scale, &latency, &recBtn, &metroBtn, &dayBtn, &colourBtn, &transpBtn, &splitBtn, &windowsBtn, &resetBtn, &hideBtn, &menuBtn })
         addAndMakeVisible (comp);
     resetBtn.setActive (true);
+    for (auto* btn : { &recBtn, &metroBtn, &dayBtn, &colourBtn, &transpBtn, &splitBtn, &windowsBtn, &resetBtn, &hideBtn, &menuBtn })
+        btn->framed = false;
     recBtn.activeColour = Colour (0xffe5383b);
     recBtn.iconColour = Colour (0xffe5383b);
     midi.setLed (0);
@@ -814,6 +845,8 @@ RailBar::RailBar (UiContext& c)
 void RailBar::paint (Graphics& g)
 {
     const auto& pal = ctx.vis.pal;
+    for (auto& t : trays)
+        draw::recess (g, t, pal, t.getHeight() * 0.32f, pal.night ? pal.body1.darker (0.3f) : pal.body1.darker (0.06f));
     auto logo = logoArea;
     const float s = jmin (logo.getHeight(), 46.0f * k);
     draw::catLogo (g, logo.removeFromLeft (s).withSizeKeepingCentre (s, s), pal.text, pal.accent);
@@ -824,55 +857,69 @@ void RailBar::paint (Graphics& g)
 
 void RailBar::resized()
 {
+    // Botones agrupados en bandejas: grabar/metrónomo · día/color · ventanas · ocultar/menú
     auto b = getLocalBounds();
     const int gap = roundToInt (8.0f * k);
     const int ib = roundToInt (48.0f * k);
     const int y = (b.getHeight() - ib) / 2;
+    const int pad = roundToInt (4.0f * k), inner = roundToInt (2.0f * k), trayGap = roundToInt (10.0f * k);
+    const int bh = ib - 2 * pad;
     logoArea = b.removeFromLeft (roundToInt (180.0f * k)).toFloat();
     b.removeFromLeft (gap);
+    trays.clear();
 
-    auto placeR = [&] (Component& c, int w) { c.setBounds (b.getRight() - w, y, w, ib); b.removeFromRight (w + gap); };
-    auto place  = [&] (Component& c, int w) { c.setBounds (b.getX(), y, w, ib); b.removeFromLeft (w + gap); };
+    auto tray = [&] (std::vector<std::pair<Component*, int>> items)
+    {
+        int total = pad * 2;
+        for (auto& it : items) total += it.second;
+        total += inner * ((int) items.size() - 1);
+        Rectangle<int> t (b.getRight() - total, y, total, ib);
+        int x = t.getX() + pad;
+        for (auto& it : items) { it.first->setBounds (x, y + pad, it.second, bh); x += it.second + inner; }
+        trays.add (t.toFloat());
+        b.removeFromRight (total + trayGap);
+    };
+    auto place = [&] (Component& c, int w) { c.setBounds (b.getX(), y, w, ib); b.removeFromLeft (w + gap); };
 
     for (auto* f : { &midi, &key, &scale, &latency }) f->k = k;
-
-    placeR (menuBtn, ib);
-    placeR (hideBtn, ib);
     const bool show = ! ctx.vis.hideParams;
-    resetBtn.setVisible (showReset);
-    if (showReset)
-    {
-        // Con texto si cabe; si no, solo el ícono (para no apachurrar los campos)
-        const float fieldsWant = (172.0f + 150.0f + 146.0f + 96.0f) * k + 4.0f * (float) gap;
-        const float iconsWant = 7.0f * (float) (ib + gap);
-        const bool roomForText = ! show || (float) b.getWidth() - iconsWant - 140.0f * k - (float) gap >= fieldsWant * 0.9f;
-        resetBtn.setLabel (roomForText ? U8 ("Restablecer") : String());
-        placeR (resetBtn, roomForText ? roundToInt (140.0f * k) : ib);
-    }
-
     for (auto* c : std::initializer_list<Component*> { &midi, &key, &scale, &latency, &dayBtn, &colourBtn, &transpBtn, &splitBtn, &windowsBtn })
         c->setVisible (show);
+    resetBtn.setVisible (showReset);
+
+    tray ({ { &hideBtn, bh }, { &menuBtn, bh } });
+
+    // "Restablecer" con texto si cabe; si no, solo el ícono
+    const float fieldsWant = (172.0f + 150.0f + 146.0f + 96.0f) * k + 4.0f * (float) gap;
+    const float iconsWant = 7.0f * (float) (bh + inner) + 3.0f * (float) (pad * 2 + trayGap);
+    const bool roomForText = ! show || (float) b.getWidth() - iconsWant - 132.0f * k >= fieldsWant * 0.9f;
+    resetBtn.setLabel (roomForText ? U8 ("Restablecer") : String());
+    const int resetW = roomForText ? roundToInt (132.0f * k) : bh;
 
     if (show)
     {
-        for (auto* btn : { &windowsBtn, &splitBtn, &transpBtn, &colourBtn, &dayBtn })
-            placeR (*btn, ib);
-        b.removeFromRight (roundToInt (6.0f * k));
+        std::vector<std::pair<Component*, int>> win { { &transpBtn, bh }, { &splitBtn, bh }, { &windowsBtn, bh } };
+        if (showReset) win.push_back ({ &resetBtn, resetW });
+        tray (win);
+        tray ({ { &dayBtn, bh }, { &colourBtn, bh } });
     }
+    else if (showReset)
+        tray ({ { &resetBtn, resetW } });
+
     // Grabar y metrónomo siempre a la mano
-    placeR (metroBtn, ib);
-    placeR (recBtn, ib);
+    tray ({ { &recBtn, bh }, { &metroBtn, bh } });
 
     if (show)
     {
+        b.removeFromRight (roundToInt (2.0f * k));
         const int avail = b.getWidth();
-        const float want = (172.0f + 150.0f + 146.0f + 96.0f) * k + 4.0f * (float) gap;
-        const float f = jlimit (0.3f, 1.0f, (float) avail / want);
+        const float f = jlimit (0.3f, 1.0f, (float) avail / fieldsWant);
         place (midi, roundToInt (172.0f * k * f));
         place (key, roundToInt (150.0f * k * f));
         place (scale, roundToInt (146.0f * k * f));
         place (latency, roundToInt (96.0f * k * f));
     }
+    repaint();
 }
 
 //==============================================================================

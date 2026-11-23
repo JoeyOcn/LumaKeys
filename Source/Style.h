@@ -118,6 +118,8 @@ public:
     bool metroFollowHost = true;
     bool countIn = true;
     bool recordMouse = true;
+    bool recordAudio = true;
+    int degreeOctave = 0;          // octava de los acordes de los grados (-2..2)
 
     // Tus presets
     std::vector<ThemePreset> themes;

@@ -47,19 +47,38 @@ Cómo usarlo
 
 Metrónomo, grabadora y piano roll (botones de arriba)
 -----------------------------------------------------
+Arriba a la derecha los botones están en grupitos:
+grabar y metrónomo | día/noche y color | ventanas | ocultar y menú.
+
 - Metrónomo: clic para prenderlo o apagarlo. La flechita abre sus ajustes:
   tempo (o Tap), tiempos por compás, 6 sonidos suaves y volumen.
   Dentro del DAW sigue el tempo del DAW.
 - Botón rojo: graba lo que tocas (y si quieres, también lo que tocas con el mouse,
   incluidos los grados). Con metrónomo hay una cuenta de 1 compás y el MIDI cae
   justo en el compás. La flechita abre tus grabaciones.
+- "Grabar audio (WAV) también": además del MIDI guarda el audio con el sonido
+  que elegiste (piano, eléctrico o tu instrumento VST3/AU), listo como sample.
 - Tus grabaciones se guardan solas en la carpeta Música > Midi Cat > Grabaciones.
-  Desde la lista las arrastras a la vista Arrangement de Ableton o a la Playlist de FL.
-- Piano roll (lápiz): ventana grande o chica para editar como en FL Studio:
-  lápiz, seleccionar, cortar, borrar, ajuste a la rejilla, cuantizar, fuerza (velocity)
-  abajo, Ctrl+Z, Ctrl+C / Ctrl+V, Ctrl+B duplica, flechas para mover, espacio reproduce.
-  Todo se guarda solo, y el botón "Arrastra al DAW" lo lleva a tu proyecto.
+  En la lista cada una tiene dos chips: "MIDI" y "Audio". Arrástralos directo
+  a la vista Arrangement de Ableton o a la Playlist de FL, sin abrir el piano roll.
+  "→ Audio" pasa ese MIDI a audio con el sonido elegido (se oye mientras se pasa,
+  tarda lo que dura el MIDI). Si editas el MIDI, vuelve a salir "→ Audio".
+- Piano roll (lápiz): editas como en Ableton.
+    Doble clic: pone o quita una nota.      B: lápiz (pintar notas) on/off.
+    Arrastrar en vacío: elegir varias.      Shift+clic: sumar o quitar de la selección.
+    Arrastrar nota: moverla. Orillas: alargar o acortar.
+    Option+arrastrar: copiar.                Cmd+arrastrar arriba/abajo: fuerza (velocity);
+                                            a los lados: mover sin rejilla.
+    Cmd+D duplica, Cmd+E divide, Cmd+U cuantiza, Cmd+A todo, Cmd+C / Cmd+V,
+    Cmd+Z deshace. Cmd+1 / Cmd+2 rejilla más fina / más ancha, Cmd+3 tresillos,
+    Cmd+4 rejilla sí/no. Flechas mueven; Shift+flechas cambian largo u octava.
+    Rueda: subir/bajar. Shift+rueda: a los lados. Cmd+rueda: zoom.
+    Arrastra arriba/abajo en la regla de compases para hacer zoom.
+    Espacio reproduce. Clic derecho: menú con todo.
+  Todo se guarda solo. "Arrastra MIDI" y "Arrastra audio" lo llevan a tu proyecto.
 - Al tocar con el mouse: entre más abajo das clic en la tecla o el grado, más fuerte suena.
+- Grados (I a VII): a su derecha está la octava en la que suenan; flechita arriba o abajo
+  para cambiarla.
 
 Presets
 -------
@@ -70,6 +89,7 @@ Presets
 Tus instrumentos VST3 / AU (solo en la app Midi Cat.app, sin Ableton)
 ---------------------------------------------------------------------
 - En "Sonido" elige "Buscar mis instrumentos…" y luego "Buscar instrumentos".
+  La búsqueda va en segundo plano: puedes seguir tocando mientras revisa.
   Midi Cat revisa tus carpetas de plugins y te deja tocar con ellos
   (y abrir su ventana). Si alguno hace que se cierre, la siguiente vez lo salta.
 

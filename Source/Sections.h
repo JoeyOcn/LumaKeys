@@ -59,6 +59,8 @@ public:
     explicit DegreesSection (UiContext& c);
     std::function<void (int, float)> onPreview;   // grado y fuerza (más abajo = más fuerte, como en FL)
     std::function<void()> onRelease;              // se soltó el mouse (el acorde dura lo que lo dejes apretado)
+    std::function<void (int)> onOctave;           // subir o bajar la octava de los acordes
+    void setOctave (int o) { if (o != octave) { octave = o; repaint(); } }
     void mouseDown (const juce::MouseEvent&) override;
     void mouseUp (const juce::MouseEvent&) override;
     void mouseMove (const juce::MouseEvent&) override;
@@ -71,8 +73,9 @@ protected:
 private:
     bool stepAnimation (float dt) override;
     juce::Rectangle<float> tile (int i) const;
-    juce::Rectangle<float> listArea;
+    juce::Rectangle<float> listArea, octArea;
     int hover = -1, pressed = -1;
+    int octave = 3, octPressed = 0;
     std::array<float, 7> press {};
 };
 

@@ -231,6 +231,7 @@ private:
     UiContext& ctx;
     bool showReset = false;
     juce::Rectangle<float> logoArea;
+    juce::Array<juce::Rectangle<float>> trays;
 };
 
 //==============================================================================

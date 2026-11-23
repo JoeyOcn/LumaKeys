@@ -104,6 +104,25 @@ private:
     int hoverNote = -1;
 };
 
+// Botón que se arrastra: lleva un archivo (MIDI o audio) a Ableton, FL Studio o el escritorio
+class FileDragChip : public juce::Component, public juce::SettableTooltipClient
+{
+public:
+    FileDragChip (UiContext& c, juce::String text, juce::String icon);
+    void paint (juce::Graphics&) override;
+    void mouseDown (const juce::MouseEvent&) override;
+    void mouseDrag (const juce::MouseEvent&) override;
+    void mouseUp (const juce::MouseEvent&) override;
+    std::function<juce::File()> getFile;
+    std::function<void()> onClickWithoutFile;   // por ejemplo, pasar a audio
+    juce::String text, icon, textWithoutFile;
+    float progress = -1.0f;                      // 0..1 mientras se hace el archivo
+
+private:
+    UiContext& ctx;
+    bool down = false, dragging = false;
+};
+
 class RecordingsPanel : public juce::Component, private juce::Timer
 {
 public:
@@ -120,10 +139,12 @@ public:
     std::function<void()> onNew;                      // MIDI nuevo vacío
 
 private:
-    struct Row { juce::File file; juce::String title, info; };
+    struct Row { juce::File file; juce::String title, info; bool hasAudio = false; };
     class List;
     void timerCallback() override;
     void select (int i);
+    void toAudio (const juce::File& midi);
+    juce::File selectedFile() const;
     UiContext& ctx;
     Prefs& prefs;
     MidiRecorder& rec;
@@ -131,7 +152,8 @@ private:
     std::function<void()> changed;
 
     PushButton recBtn, folderBtn, newBtn, editBtn;
-    Switch countSw, mouseSw;
+    Switch countSw, mouseSw, audioSw;
+    FileDragChip midiChip, audioChip;
     std::vector<Row> rows;
     int selected = -1;
     std::unique_ptr<List> list;
@@ -140,6 +162,7 @@ private:
     juce::String statusText;
     juce::Time lastFolderTime;
     int lastCount = -1;
+    bool wasBouncing = false;
 };
 
 //==============================================================================
@@ -165,4 +188,5 @@ private:
     juce::Viewport viewport;
     juce::String message;
     bool wasScanning = false, scanRequested = false;
+    int tick = 0;
 };

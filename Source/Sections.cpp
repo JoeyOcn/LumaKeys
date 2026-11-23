@@ -438,6 +438,34 @@ void DegreesSection::paintContent (Graphics& g, Rectangle<float> area)
     const auto& pal = v.pal;
     const bool tm = transparentMode();
     listArea = area.reduced (1.0f, 6.0f * k);
+    // A la derecha: la octava de los acordes (▲ número ▼)
+    octArea = listArea.removeFromRight (40.0f * k);
+    listArea.removeFromRight (8.0f * k);
+    {
+        auto o = octArea;
+        if (tm)
+        {
+            g.setColour (Colours::black.withAlpha (0.35f));
+            g.fillRoundedRectangle (o, 12.0f * k);
+        }
+        else draw::recess (g, o, pal, 12.0f * k, pal.night ? pal.plate.darker (0.2f) : pal.plate);
+        const auto col = tm ? Colours::white : pal.text;
+        auto up = o.removeFromTop (o.getHeight() * 0.32f);
+        auto down = o.removeFromBottom (o.getHeight() * 0.47f);
+        {
+            Graphics::ScopedSaveState ss (g);
+            auto ur = up.withSizeKeepingCentre (16.0f * k, 16.0f * k).translated (0.0f, 3.0f * k);
+            g.addTransform (AffineTransform::rotation (MathConstants<float>::pi, ur.getCentreX(), ur.getCentreY()));
+            draw::icon (g, "chev", ur, col.withAlpha (octPressed == 1 ? 1.0f : 0.65f), 2.0f);
+        }
+        g.setColour (col);
+        g.setFont (ctx.fonts.ui (17.0f * k, 2));
+        g.drawText (String (octave), o.withTrimmedTop (-4.0f * k), Justification::centred, false);
+        g.setColour (col.withAlpha (0.55f));
+        g.setFont (ctx.fonts.ui (11.0f * k, 1));
+        g.drawText ("oct", down.removeFromTop (down.getHeight() * 0.4f).translated (0.0f, -6.0f * k), Justification::centred, false);
+        draw::icon (g, "chev", down.withSizeKeepingCentre (16.0f * k, 16.0f * k).translated (0.0f, -2.0f * k), col.withAlpha (octPressed == -1 ? 1.0f : 0.65f), 2.0f);
+    }
 
     for (int i = 0; i < (int) v.diatonic.size() && i < 7; ++i)
     {
@@ -475,6 +503,14 @@ void DegreesSection::paintContent (Graphics& g, Rectangle<float> area)
 
 void DegreesSection::mouseDown (const MouseEvent& e)
 {
+    if (octArea.contains (e.position))
+    {
+        // Mitad de arriba sube una octava, mitad de abajo baja
+        octPressed = e.position.y < octArea.getCentreY() ? 1 : -1;
+        if (onOctave) onOctave (octPressed);
+        repaint();
+        return;
+    }
     for (int i = 0; i < 7; ++i)
         if (tile (i).contains (e.position))
         {
@@ -489,6 +525,7 @@ void DegreesSection::mouseDown (const MouseEvent& e)
 
 void DegreesSection::mouseUp (const MouseEvent&)
 {
+    if (octPressed != 0) { octPressed = 0; repaint(); }
     if (pressed >= 0 && onRelease) onRelease();
     pressed = -1;
     animate();
@@ -498,6 +535,7 @@ void DegreesSection::mouseMove (const MouseEvent& e)
 {
     int h = -1;
     for (int i = 0; i < 7; ++i) if (tile (i).contains (e.position)) h = i;
+    if (octArea.contains (e.position)) { setMouseCursor (MouseCursor::PointingHandCursor); if (hover != -1) { hover = -1; repaint(); } return; }
     if (h != hover)
     {
         hover = h;

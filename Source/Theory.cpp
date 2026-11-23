@@ -346,12 +346,8 @@ namespace theory
         for (int i = 0; i < (int) steps.size(); ++i)
             if (steps[(size_t) i] == rel) index = i;
 
-        juce::String base = index >= 0 ? juce::String (romans[index]) : juce::String (chroma[rel]);
-        const bool lower = (c.q == Quality::minor || c.q == Quality::diminished || c.q == Quality::halfDim);
-        if (lower) base = base.toLowerCase();
-
-        const auto& t = templates()[(size_t) c.templ];
-        d.roman = base + juce::String (juce::CharPointer_UTF8 (t.romanSuffix));
+        // Solo el número del grado en romano (I II III IV V VI VII), sin la calidad del acorde
+        d.roman = index >= 0 ? juce::String (romans[index]) : juce::String (chroma[rel]);
         d.inScale = index >= 0;
         d.function = index >= 0 ? degreeFunction (index, rel) : juce::String (juce::CharPointer_UTF8 ("Acorde prestado / cromático"));
         return d;

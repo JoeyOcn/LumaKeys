@@ -69,7 +69,7 @@ jobs:
           sed -i '' -e '/<key>BundleIsRelocatable<\/key>/{n;s/<true\/>/<false\/>/;}' comp.plist
           grep -A1 BundleIsRelocatable comp.plist || true
           pkgbuild --root "$ROOT" --component-plist comp.plist --scripts packaging/mac/scripts \
-            --identifier com.joeyocn.midicat --version 1.3.1 --install-location / dist/MidiCat-Instalador-Mac.pkg
+            --identifier com.joeyocn.midicat --version 1.3.2 --install-location / dist/MidiCat-Instalador-Mac.pkg
           ls -la dist
 
       - uses: actions/upload-artifact@v4

@@ -122,6 +122,7 @@ void MidiSkyProcessor::applyPrefs()
     metroSettings.followHost.store (prefs->metroFollowHost);
     recorder.countIn.store (prefs->countIn);
     recorder.recordMouse.store (prefs->recordMouse);
+    recorder.recordAudio.store (prefs->recordAudio);
 }
 
 bool MidiSkyProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
@@ -226,6 +227,7 @@ void MidiSkyProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mid
     for (const auto meta : mouseScratch)
         pedalScratch.addEvent (meta.getMessage(), meta.samplePosition);
     midi.swapWith (pedalScratch);
+    recorder.injectBounce (midi, n);   // pasar un MIDI a audio: sus notas entran aquí
     piano.setInstrument ((int) instrumentParam->load());
 
     for (const auto meta : midi)
@@ -261,6 +263,9 @@ void MidiSkyProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mid
             d[s] = ax < 0.8f ? x : std::copysign (0.8f + 0.2f * std::tanh ((ax - 0.8f) / 0.2f), x);
         }
     }
+
+    // Audio de la grabación (sin el metrónomo)
+    recorder.writeAudio (buffer, n);
 
     // El metrónomo va aparte (su propio volumen)
     metronome.process (buffer, n, metroSettings, getPlayHead());

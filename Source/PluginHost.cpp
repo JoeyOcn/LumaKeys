@@ -1,6 +1,62 @@
 #include "PluginHost.h"
 
+#if JUCE_MAC
+ #include <AudioToolbox/AudioToolbox.h>
+#endif
+
 using namespace juce;
+
+#if JUCE_MAC
+// Lista los instrumentos Audio Unit sin abrir ninguno (rápido y sin trabar la ventana).
+// Para eso se leen sus datos directo del sistema, con el mismo formato que usa JUCE.
+static String osTypeString (OSType t)
+{
+    const juce_wchar s[4] = { (juce_wchar) ((t >> 24) & 0xff), (juce_wchar) ((t >> 16) & 0xff),
+                              (juce_wchar) ((t >> 8) & 0xff), (juce_wchar) (t & 0xff) };
+    return String (s, 4);
+}
+
+static void listAudioUnitInstruments (KnownPluginList& known, std::function<void (const String&)> progress)
+{
+    AudioComponentDescription want {};
+    want.componentType = kAudioUnitType_MusicDevice;
+    AudioComponent comp = nullptr;
+    while ((comp = AudioComponentFindNext (comp, &want)) != nullptr)
+    {
+        AudioComponentDescription cd {};
+        if (AudioComponentGetDescription (comp, &cd) != noErr) continue;
+
+        String full;
+        CFStringRef cfName = nullptr;
+        if (AudioComponentCopyName (comp, &cfName) == noErr && cfName != nullptr)
+        {
+            full = String::fromCFString (cfName);
+            CFRelease (cfName);
+        }
+        String manufacturer = full.upToFirstOccurrenceOf (":", false, false).trim();
+        String name = full.fromFirstOccurrenceOf (":", false, false).trim();
+        if (name.isEmpty()) { name = full; manufacturer = {}; }
+        if (progress) progress (name);
+
+        UInt32 version = 0;
+        AudioComponentGetVersion (comp, &version);
+
+        PluginDescription d;
+        d.name = d.descriptiveName = name;
+        d.manufacturerName = manufacturer;
+        d.pluginFormatName = "AudioUnit";
+        d.category = "Synths";
+        d.fileOrIdentifier = "AudioUnit:Synths/" + osTypeString (cd.componentType) + "," + osTypeString (cd.componentSubType) + "," + osTypeString (cd.componentManufacturer);
+        d.uniqueId = d.deprecatedUid = ((int) cd.componentType) ^ ((int) cd.componentSubType) ^ ((int) cd.componentManufacturer);
+        d.version = String ((version >> 16) & 0xffff) + "." + String ((version >> 8) & 0xff) + "." + String (version & 0xff);
+        d.isInstrument = true;
+        d.numInputChannels = 0;
+        d.numOutputChannels = 2;
+        d.lastInfoUpdateTime = Time::getCurrentTime();
+        known.addType (d);
+    }
+}
+#endif
 
 static File hostDataDir()
 {
@@ -47,10 +103,20 @@ String PluginHost::scanningName() const
 
 void PluginHost::run()
 {
-    StringArray wanted { "VST3", "AudioUnit" };
+   #if JUCE_MAC
+    // Audio Units: se listan sin abrirlos (si se abrieran, cada uno trabaría la ventana)
+    listAudioUnitInstruments (known, [this] (const String& n)
+    {
+        const ScopedLock sl (nameLock);
+        scanName = n;
+    });
+    progress.store (0.15f);
+   #endif
+
+    // VST3: se revisan en este hilo aparte (la ventana sigue libre)
     std::vector<AudioPluginFormat*> list;
     for (int i = 0; i < formats.getNumFormats(); ++i)
-        if (wanted.contains (formats.getFormat (i)->getName()))
+        if (formats.getFormat (i)->getName() == "VST3")
             list.push_back (formats.getFormat (i));
 
     for (size_t fi = 0; fi < list.size() && ! threadShouldExit(); ++fi)
@@ -66,7 +132,7 @@ void PluginHost::run()
                 scanName = File::createFileWithoutCheckingPath (scanner.getNextPluginFileThatWillBeScanned()).getFileNameWithoutExtension();
             }
             const bool more = scanner.scanNextFile (true, name);
-            progress.store (((float) fi + scanner.getProgress()) / (float) list.size());
+            progress.store (0.15f + 0.85f * ((float) fi + scanner.getProgress()) / (float) jmax ((size_t) 1, list.size()));
             if (! more) break;
         }
     }

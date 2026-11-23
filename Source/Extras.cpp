@@ -404,68 +404,187 @@ void ClipView::mouseMove (const MouseEvent& e)
 }
 
 //==============================================================================
-// Lista de grabaciones (se arrastran al DAW)
+// Botón para arrastrar un archivo
+//==============================================================================
+FileDragChip::FileDragChip (UiContext& c, String t, String i) : text (std::move (t)), icon (std::move (i)), ctx (c)
+{
+    setMouseCursor (MouseCursor::DraggingHandCursor);
+}
+
+void FileDragChip::paint (Graphics& g)
+{
+    const auto& pal = ctx.vis.pal;
+    const bool has = getFile && getFile().existsAsFile();
+    auto b = getLocalBounds().toFloat().reduced (1.0f);
+    draw::button (g, b, pal, b.getHeight() * 0.3f, down ? 1.0f : 0.0f, has, 0.0f);
+    auto c = b.withTrimmedBottom (2.5f).translated (0.0f, down ? 2.5f : 0.0f);
+    const auto col = has ? pal.accentInk : pal.btnText;
+    if (progress >= 0.0f)
+    {
+        auto bar = c.reduced (10.0f, 0.0f).withSizeKeepingCentre (c.getWidth() - 20.0f, 6.0f).translated (0.0f, c.getHeight() * 0.28f);
+        g.setColour (col.withAlpha (0.2f));
+        g.fillRoundedRectangle (bar, 3.0f);
+        g.setColour (pal.accent);
+        g.fillRoundedRectangle (bar.withWidth (bar.getWidth() * jlimit (0.02f, 1.0f, progress)), 3.0f);
+        c = c.withTrimmedBottom (c.getHeight() * 0.3f);
+    }
+    auto ir = c.removeFromLeft (jmin (c.getHeight(), 40.0f));
+    draw::icon (g, has ? icon : "wave", ir.reduced (ir.getWidth() * 0.27f), col, 1.6f);
+    const auto t = progress >= 0.0f ? String (roundToInt (progress * 100.0f)) + " %" : (has ? text : textWithoutFile);
+    g.setColour (col);
+    g.setFont (draw::fitUi (ctx.fonts, t, 14.0f, c.getWidth() - 6.0f, 2));
+    g.drawText (t, c.withTrimmedRight (4.0f), Justification::centredLeft, false);
+}
+
+void FileDragChip::mouseDown (const MouseEvent&) { down = true; dragging = false; repaint(); }
+
+void FileDragChip::mouseDrag (const MouseEvent& e)
+{
+    if (dragging || e.getDistanceFromDragStart() < 4 || ! getFile) return;
+    const auto f = getFile();
+    if (! f.existsAsFile()) return;
+    dragging = true;
+    SafePointer<FileDragChip> safe (this);
+    DragAndDropContainer::performExternalDragDropOfFiles ({ f.getFullPathName() }, false, this,
+        [safe] { if (auto* c = safe.getComponent()) { c->down = false; c->dragging = false; c->repaint(); } });
+}
+
+void FileDragChip::mouseUp (const MouseEvent& e)
+{
+    down = false;
+    repaint();
+    if (dragging || ! getLocalBounds().contains (e.getPosition())) { dragging = false; return; }
+    const bool has = getFile && getFile().existsAsFile();
+    if (! has && onClickWithoutFile) onClickWithoutFile();
+}
+
+//==============================================================================
+// Lista de grabaciones: cada una se arrastra como MIDI o como audio
 //==============================================================================
 class RecordingsPanel::List : public Component
 {
 public:
     List (RecordingsPanel& p) : owner (p) {}
     static constexpr int rowH = 62;
+    enum Zone { rowZone, playZone, trashZone, editZone, midiZone, audioZone };
+
+    struct Rects { Rectangle<float> text, midi, audio, edit, play, trash; };
+    Rects rectsFor (int i) const
+    {
+        Rects r;
+        auto in = Rectangle<float> (0.0f, (float) (i * rowH), (float) getWidth(), (float) rowH - 6.0f).withTrimmedBottom (2.5f);
+        r.trash = in.removeFromRight (36.0f);
+        r.play = in.removeFromRight (36.0f);
+        r.edit = in.removeFromRight (36.0f);
+        in.removeFromRight (4.0f);
+        r.audio = in.removeFromRight (70.0f).reduced (0.0f, 12.0f);
+        in.removeFromRight (6.0f);
+        r.midi = in.removeFromRight (62.0f).reduced (0.0f, 12.0f);
+        in.removeFromRight (8.0f);
+        r.text = in.withTrimmedLeft (14.0f);
+        return r;
+    }
 
     void paint (Graphics& g) override
     {
         auto& ctx = owner.ctx;
         const auto& pal = ctx.vis.pal;
+        const bool bouncing = owner.rec.isBouncing();
         for (int i = 0; i < (int) owner.rows.size(); ++i)
         {
+            const auto& row = owner.rows[(size_t) i];
             auto r = Rectangle<float> (0.0f, (float) (i * rowH), (float) getWidth(), (float) rowH - 6.0f);
-            draw::button (g, r, pal, 10.0f, 0.0f, i == owner.selected, i == hover ? 0.6f : 0.0f);
-            auto in = r.withTrimmedBottom (2.5f);
-            const auto txt = i == owner.selected ? pal.accentInk : pal.btnText;
-            draw::icon (g, "grip", in.removeFromLeft (30.0f).reduced (6.0f, 14.0f), txt.withAlpha (0.5f));
-            auto trash = in.removeFromRight (38.0f);
-            auto play = in.removeFromRight (38.0f);
-            auto edit = in.removeFromRight (38.0f);
-            draw::icon (g, "pencil", edit.reduced (9.0f, 15.0f), txt.withAlpha (0.85f), 1.5f);
+            const bool sel = i == owner.selected;
+            draw::button (g, r, pal, 10.0f, 0.0f, false, i == hover ? 0.6f : 0.0f);
+            if (sel)
+            {
+                g.setColour (pal.accent);
+                g.drawRoundedRectangle (r.withTrimmedBottom (2.5f).reduced (1.0f), 10.0f, 2.0f);
+            }
+            const auto rc = rectsFor (i);
+            const auto txt = pal.btnText;
+
+            // Chips para arrastrar
+            auto chip = [&] (Rectangle<float> cr, const String& label, bool filled)
+            {
+                g.setColour (filled ? pal.accent : txt.withAlpha (0.08f));
+                g.fillRoundedRectangle (cr, cr.getHeight() * 0.5f);
+                if (! filled) { g.setColour (txt.withAlpha (0.35f)); g.drawRoundedRectangle (cr.reduced (0.5f), cr.getHeight() * 0.5f, 1.0f); }
+                g.setColour (filled ? pal.accentInk : txt.withAlpha (0.8f));
+                g.setFont (ctx.fonts.ui (12.5f, 2));
+                g.drawText (label, cr, Justification::centred, false);
+            };
+            chip (rc.midi, "MIDI", true);
+            const bool thisBouncing = bouncing && owner.rec.bouncingFile() == MidiRecorder::audioFileFor (row.file);
+            if (thisBouncing) chip (rc.audio, String (roundToInt (owner.rec.bounceProgress() * 100.0f)) + " %", false);
+            else chip (rc.audio, row.hasAudio ? "Audio" : U8 ("→ Audio"), row.hasAudio);
+
+            draw::icon (g, "pencil", rc.edit.reduced (9.0f, 15.0f), txt.withAlpha (0.85f), 1.5f);
             const bool playingThis = owner.isPlaying && owner.isPlaying() && playingRow == i;
-            draw::icon (g, playingThis ? "stop" : "play", play.reduced (10.0f, 16.0f), txt.withAlpha (0.85f));
-            draw::icon (g, "trash", trash.reduced (9.0f, 15.0f), (confirmRow == i ? Colour (0xffe5383b) : txt.withAlpha (0.7f)), 1.5f);
-            g.setColour (txt);
-            g.setFont (ctx.fonts.ui (15.0f, 2));
-            g.drawText (confirmRow == i ? U8 ("¿Borrar? Toca otra vez") : owner.rows[(size_t) i].title,
-                        in.removeFromTop (in.getHeight() * 0.55f).withTrimmedLeft (4.0f), Justification::bottomLeft, true);
+            draw::icon (g, playingThis ? "stop" : "play", rc.play.reduced (10.0f, 16.0f), txt.withAlpha (0.85f));
+            draw::icon (g, "trash", rc.trash.reduced (9.0f, 15.0f), (confirmRow == i ? Colour (0xffe5383b) : txt.withAlpha (0.7f)), 1.5f);
+
+            auto tr = rc.text;
+            g.setColour (sel ? pal.accent : txt);
+            g.setFont (ctx.fonts.ui (14.5f, 2));
+            g.drawText (confirmRow == i ? U8 ("¿Borrar? Toca otra vez") : row.title,
+                        tr.removeFromTop (tr.getHeight() * 0.55f), Justification::bottomLeft, true);
             g.setColour (txt.withAlpha (0.65f));
-            g.setFont (ctx.fonts.ui (13.0f, 1));
-            g.drawText (owner.rows[(size_t) i].info, in.withTrimmedLeft (4.0f), Justification::topLeft, true);
+            g.setFont (ctx.fonts.ui (12.5f, 1));
+            g.drawText (row.info, tr, Justification::topLeft, true);
         }
     }
 
     int rowAt (Point<int> p) const { const int i = p.y / rowH; return i >= 0 && i < (int) owner.rows.size() ? i : -1; }
-    int zoneAt (Point<int> p) const { return p.x > getWidth() - 38 ? 2 : (p.x > getWidth() - 76 ? 1 : (p.x > getWidth() - 114 ? 3 : 0)); }   // 0 fila, 1 play, 2 borrar, 3 editar
+    Zone zoneAt (int i, Point<int> p) const
+    {
+        const auto rc = rectsFor (i);
+        const auto pf = p.toFloat();
+        if (rc.trash.contains (pf)) return trashZone;
+        if (rc.play.contains (pf)) return playZone;
+        if (rc.edit.contains (pf)) return editZone;
+        if (rc.audio.expanded (2.0f, 12.0f).contains (pf)) return audioZone;
+        if (rc.midi.expanded (2.0f, 12.0f).contains (pf)) return midiZone;
+        return rowZone;
+    }
 
     void mouseMove (const MouseEvent& e) override
     {
         const int h = rowAt (e.getPosition());
         if (h != hover) { hover = h; repaint(); }
-        setMouseCursor (h >= 0 && zoneAt (e.getPosition()) == 0 ? MouseCursor::DraggingHandCursor : MouseCursor::PointingHandCursor);
+        MouseCursor c = MouseCursor::NormalCursor;
+        if (h >= 0)
+        {
+            const auto z = zoneAt (h, e.getPosition());
+            const bool audioReady = owner.rows[(size_t) h].hasAudio;
+            c = (z == midiZone || z == rowZone || (z == audioZone && audioReady)) ? MouseCursor::DraggingHandCursor : MouseCursor::PointingHandCursor;
+        }
+        setMouseCursor (c);
     }
     void mouseExit (const MouseEvent&) override { hover = -1; repaint(); }
     void mouseDoubleClick (const MouseEvent& e) override
     {
         const int i = rowAt (e.getPosition());
-        if (i >= 0 && zoneAt (e.getPosition()) == 0 && owner.onEdit) owner.onEdit (owner.rows[(size_t) i].file);
+        if (i >= 0 && zoneAt (i, e.getPosition()) == rowZone && owner.onEdit) owner.onEdit (owner.rows[(size_t) i].file);
     }
 
-    void mouseDown (const MouseEvent& e) override { dragging = false; downRow = rowAt (e.getPosition()); }
+    void mouseDown (const MouseEvent& e) override
+    {
+        dragging = false;
+        downRow = rowAt (e.getPosition());
+        downZone = downRow >= 0 ? zoneAt (downRow, e.getPosition()) : rowZone;
+    }
 
     void mouseDrag (const MouseEvent& e) override
     {
-        if (dragging || downRow < 0 || e.getDistanceFromDragStart() < 6) return;
+        if (dragging || downRow < 0 || e.getDistanceFromDragStart() < 5) return;
+        // Arrastrar: la fila o el chip MIDI llevan el .mid; el chip Audio lleva el .wav
+        File f = owner.rows[(size_t) downRow].file;
+        if (downZone == audioZone) f = MidiRecorder::freshAudioFor (f);
+        else if (downZone != midiZone && downZone != rowZone) return;
+        if (! f.existsAsFile()) return;
         dragging = true;
-        // Arrastrar el archivo .mid fuera de Midi Cat (a Ableton, FL Studio, el escritorio…)
-        const auto f = owner.rows[(size_t) downRow].file;
-        if (f.existsAsFile())
-            DragAndDropContainer::performExternalDragDropOfFiles ({ f.getFullPathName() }, false, this);
+        DragAndDropContainer::performExternalDragDropOfFiles ({ f.getFullPathName() }, false, this);
     }
 
     void mouseUp (const MouseEvent& e) override
@@ -473,12 +592,14 @@ public:
         if (dragging) { dragging = false; return; }
         const int i = rowAt (e.getPosition());
         if (i < 0 || i != downRow) return;
-        const int z = zoneAt (e.getPosition());
-        if (z == 2)
+        const auto z = zoneAt (i, e.getPosition());
+        const auto file = owner.rows[(size_t) i].file;
+        if (z == trashZone)
         {
             if (confirmRow == i)
             {
-                owner.rows[(size_t) i].file.moveToTrash();   // va a la papelera (se puede recuperar)
+                file.moveToTrash();   // a la papelera (se puede recuperar)
+                MidiRecorder::audioFileFor (file).moveToTrash();
                 confirmRow = -1;
                 owner.refreshList();
             }
@@ -487,11 +608,13 @@ public:
         }
         confirmRow = -1;
         owner.select (i);
-        if (z == 3 && owner.onEdit) { owner.onEdit (owner.rows[(size_t) i].file); return; }
-        if (z == 1)
+        if (z == editZone && owner.onEdit) { owner.onEdit (file); return; }
+        if (z == audioZone && ! owner.rows[(size_t) i].hasAudio) { owner.toAudio (file); repaint(); return; }
+        if (z == midiZone || z == audioZone) { owner.statusText = U8 ("Arrastra el chip a Ableton o FL Studio"); owner.repaint(); return; }
+        if (z == playZone)
         {
             if (owner.isPlaying && owner.isPlaying() && playingRow == i) { if (owner.onStopPlay) owner.onStopPlay(); playingRow = -1; }
-            else if (owner.onPlay) { owner.onPlay (owner.rows[(size_t) i].file); playingRow = i; }
+            else if (owner.onPlay) { owner.onPlay (file); playingRow = i; }
             repaint();
         }
     }
@@ -500,10 +623,12 @@ public:
     {
         if (confirmRow >= 0 && Time::getMillisecondCounter() - confirmAt > 3500) { confirmRow = -1; repaint(); }
         if (playingRow >= 0 && owner.isPlaying && ! owner.isPlaying()) { playingRow = -1; repaint(); }
+        if (owner.rec.isBouncing()) repaint();
     }
 
     RecordingsPanel& owner;
     int hover = -1, downRow = -1, confirmRow = -1, playingRow = -1;
+    Zone downZone = rowZone;
     uint32 confirmAt = 0;
     bool dragging = false;
 };
@@ -513,46 +638,77 @@ RecordingsPanel::RecordingsPanel (UiContext& c, Prefs& p, MidiRecorder& r, Metro
       recBtn (c, "rec", U8 ("Grabar o detener"), "Grabar"),
       folderBtn (c, "folder", U8 ("Abrir la carpeta de grabaciones"), "Abrir carpeta"),
       newBtn (c, "pencil", U8 ("Hacer un MIDI nuevo desde cero en el piano roll"), "Nuevo MIDI"),
-      editBtn (c, "pencil", U8 ("Abrir esta grabación en el piano roll (estilo FL Studio)"), "Editar en piano roll"),
-      countSw (c), mouseSw (c), clipView (c)
+      editBtn (c, "pencil", U8 ("Abrir esta grabación en el piano roll"), "Editar en piano roll"),
+      countSw (c), mouseSw (c), audioSw (c),
+      midiChip (c, U8 ("Arrastra MIDI"), "export"),
+      audioChip (c, U8 ("Arrastra audio"), "wave"),
+      clipView (c)
 {
     list = std::make_unique<List> (*this);
     viewport.setViewedComponent (list.get(), false);
     viewport.setScrollBarsShown (true, false);
     viewport.setScrollBarThickness (8);
-    for (Component* comp : std::initializer_list<Component*> { &recBtn, &folderBtn, &newBtn, &editBtn, &countSw, &mouseSw, &viewport, &clipView })
+    for (Component* comp : std::initializer_list<Component*> { &recBtn, &folderBtn, &newBtn, &editBtn, &countSw, &mouseSw, &audioSw, &midiChip, &audioChip, &viewport, &clipView })
         addAndMakeVisible (comp);
-    editBtn.setActive (true);
-    newBtn.onClick = [this] { if (onNew) onNew(); };
-    editBtn.onClick = [this] { if (selected >= 0 && selected < (int) rows.size() && onEdit) onEdit (rows[(size_t) selected].file); };
-    clipView.onOpen = [this] { if (selected >= 0 && selected < (int) rows.size() && onEdit) onEdit (rows[(size_t) selected].file); };
 
     recBtn.activeColour = Colour (0xffe5383b);
     recBtn.iconColour = Colour (0xffe5383b);
     recBtn.onClick = [this] { rec.toggle(); timerCallback(); };
     folderBtn.onClick = [] { auto f = MidiRecorder::folder(); f.createDirectory(); f.startAsProcess(); };
+    newBtn.onClick = [this] { if (onNew) onNew(); };
+    editBtn.onClick = [this] { if (selectedFile().existsAsFile() && onEdit) onEdit (selectedFile()); };
+    clipView.onOpen = [this] { if (selectedFile().existsAsFile() && onEdit) onEdit (selectedFile()); };
+    clipView.onEdited = [this] { refreshList(); };
+
     countSw.setOn (prefs.countIn);
     countSw.onChange = [this] (bool v) { prefs.countIn = v; prefs.save (false); if (changed) changed(); };
     mouseSw.setOn (prefs.recordMouse);
     mouseSw.onChange = [this] (bool v) { prefs.recordMouse = v; prefs.save (false); if (changed) changed(); };
-    clipView.onEdited = [this] { refreshList(); };
+    audioSw.setOn (prefs.recordAudio);
+    audioSw.onChange = [this] (bool v) { prefs.recordAudio = v; prefs.save (false); if (changed) changed(); };
 
-    setSize (900, 540);
+    midiChip.getFile = [this] { return selectedFile(); };
+    midiChip.setTooltip (U8 ("Arrastra este MIDI a Ableton o FL Studio"));
+    audioChip.getFile = [this] { return MidiRecorder::freshAudioFor (selectedFile()); };
+    audioChip.textWithoutFile = U8 ("Pasar a audio");
+    audioChip.onClickWithoutFile = [this] { toAudio (selectedFile()); };
+    audioChip.setTooltip (U8 ("El audio (WAV) con el sonido elegido, para usarlo como sample"));
+
+    setSize (1000, 560);
     refreshList (true);
     startTimerHz (10);
 }
 
 RecordingsPanel::~RecordingsPanel() { stopTimer(); }
 
+File RecordingsPanel::selectedFile() const
+{
+    return selected >= 0 && selected < (int) rows.size() ? rows[(size_t) selected].file : File();
+}
+
+void RecordingsPanel::toAudio (const File& midi)
+{
+    if (rec.isBouncing())
+    {
+        rec.cancelBounce();
+        statusText = U8 ("Se canceló el paso a audio");
+    }
+    else if (rec.state() != 0) statusText = U8 ("Primero termina de grabar");
+    else if (rec.startBounce (midi)) statusText = U8 ("Pasando a audio con el sonido elegido (se oye mientras)…");
+    else statusText = U8 ("No se pudo pasar a audio");
+    repaint();
+}
+
 void RecordingsPanel::refreshList (bool selectNewest)
 {
-    const auto keep = selected >= 0 && selected < (int) rows.size() ? rows[(size_t) selected].file : File();
+    const auto keep = selectedFile();
     rows.clear();
     for (auto& f : MidiRecorder::recordings())
     {
         Row row;
         row.file = f;
         row.title = f.getFileNameWithoutExtension().replace ("Midi Cat ", "");
+        row.hasAudio = MidiRecorder::freshAudioFor (f) != File();
         MidiClip clip;
         if (clip.load (f))
             row.info = timeText (clip.seconds) + U8 ("  ·  ") + String ((int) clip.notes.size()) + " notas  ·  " + String (roundToInt (clip.bpm)) + " BPM";
@@ -566,8 +722,10 @@ void RecordingsPanel::refreshList (bool selectNewest)
     list->setSize (jmax (10, viewport.getWidth() - 10), jmax (10, (int) rows.size() * List::rowH));
     if (selected >= 0 && rows[(size_t) selected].file != clipView.getFile()) clipView.setFile (rows[(size_t) selected].file);
     if (selected < 0) clipView.setFile ({});
-    editBtn.setVisible (! rows.empty());
+    for (Component* comp : std::initializer_list<Component*> { &editBtn, &midiChip, &audioChip }) comp->setVisible (! rows.empty());
     list->repaint();
+    midiChip.repaint();
+    audioChip.repaint();
     repaint();
 }
 
@@ -576,6 +734,8 @@ void RecordingsPanel::select (int i)
     selected = i;
     clipView.setFile (rows[(size_t) i].file);
     list->repaint();
+    midiChip.repaint();
+    audioChip.repaint();
 }
 
 void RecordingsPanel::timerCallback()
@@ -585,15 +745,21 @@ void RecordingsPanel::timerCallback()
     recBtn.setIcon (s != 0 ? "stop" : "rec");
     recBtn.setLabel (s == 0 ? "Grabar" : "Detener");
     String st;
+    const bool bouncing = rec.isBouncing();
     if (s == 1) st = U8 ("Cuenta: ") + String (rec.beatsLeftInCountIn()) + U8 ("…");
     else if (s == 2) st = U8 ("Grabando  ") + timeText (rec.elapsedSeconds());
-    else st = metro.on.load() ? U8 ("Listo · cae justo en el compás")
-                              : U8 ("Listo · empieza en tu primera nota");
+    else if (bouncing) st = U8 ("Pasando a audio… ") + String (roundToInt (rec.bounceProgress() * 100.0f)) + " %";
+    else if (wasBouncing) st = U8 ("Listo: el audio quedó junto al MIDI");
+    else if (statusText.startsWith ("Arrastra") || statusText.startsWith ("Se cancel") || statusText.startsWith ("No se") || statusText.startsWith ("Primero")) st = statusText;
+    else st = metro.on.load() ? U8 ("Listo · cae justo en el compás") : U8 ("Listo · empieza en tu primera nota");
+    if (bouncing != wasBouncing) { wasBouncing = bouncing; if (! bouncing) refreshList(); }
+    audioChip.progress = bouncing && rec.bouncingFile() == MidiRecorder::audioFileFor (selectedFile()) ? rec.bounceProgress() : -1.0f;
+    audioChip.repaint();
     if (st != statusText) { statusText = st; repaint (0, 0, getWidth(), 60); }
 
     const auto ft = MidiRecorder::folder().getLastModificationTime();
     if (ft != lastFolderTime || (int) MidiRecorder::recordings().size() != lastCount)
-        refreshList (true);
+        refreshList (! bouncing);
     list->tick();
 }
 
@@ -602,16 +768,24 @@ void RecordingsPanel::resized()
     recBtn.setBounds (0, 0, 170, 52);
     folderBtn.setBounds (getWidth() - 180, 0, 180, 52);
     newBtn.setBounds (getWidth() - 180 - 10 - 160, 0, 160, 52);
-    countSw.setBounds (getWidth() - 58 - 420, 84, 58, 30);
-    mouseSw.setBounds (getWidth() - 58, 84, 58, 30);
-    auto body = getLocalBounds().withTrimmedTop (132);
-    auto left = body.removeFromLeft (320);
+
+    // Tres opciones en fila
+    const int y = 76, colW = getWidth() / 3;
+    countSw.setBounds (colW - 70, y, 58, 30);
+    mouseSw.setBounds (colW * 2 - 70, y, 58, 30);
+    audioSw.setBounds (getWidth() - 58, y, 58, 30);
+
+    auto body = getLocalBounds().withTrimmedTop (128);
+    auto left = body.removeFromLeft (440);
     viewport.setBounds (left.withTrimmedBottom (30));
     list->setSize (jmax (10, viewport.getWidth() - 10), jmax (10, (int) rows.size() * List::rowH));
     body.removeFromLeft (16);
-    editBtn.setBounds (body.removeFromBottom (46).removeFromRight (240));
+    auto bottom = body.removeFromBottom (48);
+    midiChip.setBounds (bottom.removeFromLeft (170));
+    bottom.removeFromLeft (8);
+    audioChip.setBounds (bottom.removeFromLeft (170));
+    editBtn.setBounds (bottom.removeFromRight (200));
     body.removeFromBottom (8);
-    editBtn.setVisible (! rows.empty());
     clipView.setBounds (body);
 }
 
@@ -623,18 +797,20 @@ void RecordingsPanel::paint (Graphics& g)
     g.drawText (statusText, Rectangle<float> (186.0f, 0.0f, (float) getWidth() - 186.0f - 360.0f, 52.0f), Justification::centredLeft, true);
 
     g.setColour (pal.text);
-    g.setFont (ctx.fonts.ui (14.5f, 1));
-    g.drawText (U8 ("Cuenta de 1 compás (con metrónomo)"), Rectangle<float> ((float) getWidth() - 480.0f - 300.0f + 0.0f, 84.0f, 290.0f, 30.0f), Justification::centredRight, false);
-    g.drawText (U8 ("Grabar también el mouse (teclas y grados)"), Rectangle<float> ((float) getWidth() - 68.0f - 330.0f, 84.0f, 326.0f, 30.0f), Justification::centredRight, false);
+    g.setFont (ctx.fonts.ui (14.0f, 1));
+    const float colW = (float) getWidth() / 3.0f;
+    g.drawText (U8 ("Cuenta de 1 compás"), Rectangle<float> (0.0f, 76.0f, colW - 80.0f, 30.0f), Justification::centredRight, false);
+    g.drawText (U8 ("Grabar el mouse (teclas y grados)"), Rectangle<float> (colW, 76.0f, colW - 80.0f, 30.0f), Justification::centredRight, false);
+    g.drawText (U8 ("Grabar audio (WAV) también"), Rectangle<float> (colW * 2.0f, 76.0f, colW - 68.0f, 30.0f), Justification::centredRight, false);
 
     if (rows.empty())
     {
         g.setColour (pal.dim);
         g.setFont (ctx.fonts.ui (15.0f, 1));
         g.drawFittedText (U8 ("Todavía no hay grabaciones.\nDale al botón rojo y toca algo."),
-                          Rectangle<int> (0, 150, 320, 120), Justification::centred, 3);
+                          Rectangle<int> (0, 150, 440, 120), Justification::centred, 3);
     }
-    label (g, ctx, U8 ("Arrástralas a Ableton o FL Studio"), Rectangle<float> (0.0f, (float) getHeight() - 24.0f, 320.0f, 22.0f), false);
+    label (g, ctx, U8 ("Arrastra MIDI o Audio directo a Ableton o FL Studio"), Rectangle<float> (0.0f, (float) getHeight() - 24.0f, 440.0f, 22.0f), false);
 }
 
 //==============================================================================
@@ -741,8 +917,14 @@ void PluginsPanel::refresh()
 
 void PluginsPanel::timerCallback()
 {
+    // Mientras busca: solo se mueve la barrita; la lista se rehace cuando cambia (y a lo mucho 2 veces por segundo)
     const bool s = host.isScanning();
-    if (s || s != wasScanning || (scanRequested && ! s))
+    if (s)
+    {
+        repaint (0, 56, getWidth(), 44);
+        if (++tick % 4 == 0 && host.instruments().size() != list->items.size()) list->rebuild();
+    }
+    if (s != wasScanning || (scanRequested && ! s))
     {
         if (! s && (wasScanning || scanRequested))
         {
@@ -790,11 +972,11 @@ void PluginsPanel::paint (Graphics& g)
         auto t = message;
         if (t.isEmpty())
             t = host.hasInstrument() ? U8 ("Suena: ") + host.instrumentName()
-                                     : (host.instruments().isEmpty() ? U8 ("Dale a \"Buscar instrumentos\" para ver los VST3 y AU de tu compu.")
-                                                                     : U8 ("Elige un instrumento para tocar con él."));
+                                     : (list->items.isEmpty() ? U8 ("Dale a \"Buscar instrumentos\" para ver los VST3 y AU de tu compu.")
+                                                              : U8 ("Elige un instrumento para tocar con él."));
         g.drawText (t, info, Justification::centredLeft, true);
     }
-    if (! host.isScanning() && host.instruments().isEmpty())
+    if (! host.isScanning() && list->items.isEmpty())
     {
         g.setColour (pal.dim);
         g.setFont (ctx.fonts.ui (14.0f, 1));

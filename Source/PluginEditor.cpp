@@ -116,6 +116,12 @@ MidiSkyEditor::MidiSkyEditor (MidiSkyProcessor& p)
     rail.metroBtn.onClick   = [this] { proc.metroSettings.on.store (! proc.metroSettings.on.load()); };
     rail.metroBtn.onMore    = [this] { showMetronomePanel (rail.metroBtn); };
 
+    proc.recorder.onAudioSaved = [this] (const File& wav)
+    {
+        if (rollWindow != nullptr && wav == MidiRecorder::audioFileFor (rollWindow->roll().getFile()))
+            rollWindow->roll().setStatus (U8 ("Audio listo: arrástralo desde «Arrastra audio» a Ableton o FL Studio"));
+    };
+
     if (proc.host != nullptr)
     {
         proc.host->onBeforeChange = [this] { hostedWindow.reset(); };
@@ -175,6 +181,13 @@ MidiSkyEditor::MidiSkyEditor (MidiSkyProcessor& p)
         setChoice ("scale", minor ? 1 : 0);
     };
     degrees.onPreview = [this] (int i, float vel) { previewChord (i, vel); };
+    degrees.onOctave = [this] (int d)
+    {
+        prefs->degreeOctave = jlimit (-2, 2, prefs->degreeOctave + d);
+        prefs->save (false);
+        degrees.setOctave (3 + prefs->degreeOctave);
+    };
+    degrees.setOctave (3 + prefs->degreeOctave);
     degrees.onRelease = [this]
     {
         // Suena lo que lo dejes apretado (mínimo un instante, para que se oiga)
@@ -227,6 +240,7 @@ MidiSkyEditor::~MidiSkyEditor()
     popover.reset();
     rollWindow.reset();
     hostedWindow.reset();
+    proc.recorder.onAudioSaved = nullptr;
     if (proc.host != nullptr) { proc.host->onBeforeChange = nullptr; proc.host->onChanged = nullptr; proc.host->onListChanged = nullptr; }
     prefs->removeChangeListener (this);
     for (auto& [id, w] : windows)
@@ -1452,7 +1466,7 @@ void MidiSkyEditor::showLatencyPanel()
 
 void MidiSkyEditor::showAbout()
 {
-    const auto text = U8 ("Midi Cat 1.3.1: visualizador de escalas, acordes, notas y pentagrama, con pianos, metrónomo, grabadora MIDI y piano roll.\n\n"
+    const auto text = U8 ("Midi Cat 1.3.2: visualizador de escalas, acordes, notas y pentagrama, con pianos, metrónomo, grabadora MIDI y piano roll.\n\n"
                           "Piano de cola: Salamander Grand Piano de Alexander Holm (CC BY 3.0).\n"
                           "Piano de concierto: Splendid Grand Piano, muestras de dominio público de Akai.\n"
                           "Piano eléctrico: jRhodes3d de Jeff Learman (CC BY 4.0), github.com/sfzinstruments/jlearman.jRhodes3d\n"
@@ -1504,6 +1518,18 @@ void MidiSkyEditor::openPianoRoll (File f)
     if (rollWindow == nullptr)
     {
         rollWindow = std::make_unique<PianoRollWindow> (ctx, proc.uiKeyboard, look);
+        rollWindow->roll().onConvertToAudio = [this] (const File& midi)
+        {
+            if (proc.recorder.isBouncing()) { proc.recorder.cancelBounce(); if (rollWindow) rollWindow->roll().setStatus (U8 ("Se canceló el paso a audio")); return; }
+            const bool ok = proc.recorder.startBounce (midi);
+            if (rollWindow) rollWindow->roll().setStatus (ok ? U8 ("Pasando a audio con el sonido elegido (se oye mientras)…")
+                                                             : U8 ("No se pudo pasar a audio (¿estás grabando?)"));
+        };
+        rollWindow->roll().audioProgress = [this]
+        {
+            if (rollWindow == nullptr || ! proc.recorder.isBouncing()) return -1.0f;
+            return proc.recorder.bouncingFile() == MidiRecorder::audioFileFor (rollWindow->roll().getFile()) ? proc.recorder.bounceProgress() : -1.0f;
+        };
         Component::SafePointer<MidiSkyEditor> safe (this);
         rollWindow->onClose = [safe]
         {
@@ -1661,8 +1687,8 @@ void MidiSkyEditor::previewChord (int index, float velocity)
     if (index < 0 || index >= (int) vis.diatonic.size()) return;
     stopPreview();
     const auto& d = vis.diatonic[(size_t) index];
-    int prev = 48 + d.rootPc;
-    if (prev < 52) prev += 12;
+    int prev = 48 + 12 * prefs->degreeOctave + d.rootPc;
+    if (prev < 52 + 12 * prefs->degreeOctave) prev += 12;
     previewNotes.push_back (prev - 12);
     previewNotes.push_back (prev);
     for (size_t i = 1; i < d.pcs.size(); ++i)
@@ -1672,6 +1698,7 @@ void MidiSkyEditor::previewChord (int index, float velocity)
         previewNotes.push_back (n);
         prev = n;
     }
+    for (auto& n : previewNotes) n = jlimit (0, 127, n);
     for (auto n : previewNotes) proc.uiKeyboard.noteOn (1, n, velocity);
     previewStartedAt = Time::getMillisecondCounterHiRes();
     previewOffAt = previewStartedAt + 30000.0;   // se apaga al soltar el mouse
