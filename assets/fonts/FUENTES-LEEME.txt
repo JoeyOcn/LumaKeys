@@ -1,0 +1,7 @@
+Fuentes incluidas en MidiSky (todas con licencia SIL Open Font License 1.1, ver los archivos *-OFL.txt):
+
+- Bravura.otf: subconjunto modificado de Bravura (Steinberg). Al ser una versión modificada se renombró internamente "MidiSky Notes", como pide la licencia por el nombre reservado "Bravura".
+- PressStart2P-Regular.ttf: subconjunto modificado de Press Start 2P (CodeMan38). Renombrado internamente "MidiSky Pixel" por el nombre reservado "Press Start 2P".
+- Jersey10-Regular.ttf: subconjunto de Jersey 10 (Sarah Cadigan-Fried).
+- ShipporiMincho-*.ttf: subconjunto de Shippori Mincho (FONTDASU).
+- ZenKakuGothicNew-*.ttf: subconjunto de Zen Kaku Gothic New (Yoshimichi Ohira).

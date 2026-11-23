@@ -79,6 +79,12 @@ juce::AudioProcessorValueTreeState::ParameterLayout MidiSkyProcessor::createLayo
 
     layout.add (std::make_unique<AudioParameterBool> (ParameterID { "highlight", 1 }, "Resaltar escala", true));
 
+    layout.add (std::make_unique<AudioParameterFloat> (
+        ParameterID { "latency", 1 }, "Compensar latencia",
+        NormalisableRange<float> (0.0f, 300.0f, 1.0f), 0.0f,
+        AudioParameterFloatAttributes().withLabel ("ms")
+            .withStringFromValueFunction ([] (float v, int) { return String (roundToInt (v)) + " ms"; })));
+
     return layout;
 }
 
@@ -88,6 +94,7 @@ MidiSkyProcessor::MidiSkyProcessor()
 {
     pianoOn = apvts.getRawParameterValue ("piano");
     volume  = apvts.getRawParameterValue ("volume");
+    latencyMs = apvts.getRawParameterValue ("latency");
 }
 
 bool MidiSkyProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
@@ -98,6 +105,11 @@ bool MidiSkyProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
 
 void MidiSkyProcessor::prepareToPlay (double sampleRate, int)
 {
+    currentRate.store (sampleRate);
+    delayQueue.ensureSize (16384);
+    delayScratch.ensureSize (16384);
+    delayQueue.clear();
+    lastDelaySamples = 0;
     piano.prepare (sampleRate);
     gainSmooth.reset (sampleRate, 0.03);
     gainSmooth.setCurrentAndTargetValue (juce::Decibels::decibelsToGain (volume->load(), -47.9f));
@@ -126,6 +138,37 @@ void MidiSkyProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mid
     }
     if (external)
         lastMidiActivityMs.store ((int) juce::Time::getMillisecondCounter());
+
+    // Compensar latencia: retrasar las notas que vienen de afuera
+    const int delaySamples = juce::jlimit (0, (int) (getSampleRate() * 0.5),
+                                           (int) std::lround (latencyMs->load() * getSampleRate() / 1000.0));
+    if (delaySamples != lastDelaySamples)
+    {
+        // Si cambia el retraso, lo pendiente sale ya (así no quedan notas pegadas)
+        for (const auto meta : delayQueue)
+            midi.addEvent (meta.getMessage(), 0);
+        delayQueue.clear();
+        lastDelaySamples = delaySamples;
+    }
+    if (delaySamples > 0 || ! delayQueue.isEmpty())
+    {
+        for (const auto meta : midi)
+            delayQueue.addEvent (meta.getMessage(), meta.samplePosition + delaySamples);
+        midi.clear();
+        delayScratch.clear();
+        for (const auto meta : delayQueue)
+        {
+            if (meta.samplePosition < n) midi.addEvent (meta.getMessage(), meta.samplePosition);
+            else                         delayScratch.addEvent (meta.getMessage(), meta.samplePosition - n);
+        }
+        delayQueue.swapWith (delayScratch);
+    }
+
+    if (allOffRequest.exchange (false))
+    {
+        notes.clear();
+        piano.allNotesOff();
+    }
 
     uiKeyboard.processNextMidiBuffer (midi, 0, n, true);
 

@@ -60,6 +60,8 @@ public:
     bool isPianoReady() const { return piano.isReady(); }
     std::atomic<int> lastMidiActivityMs { 0 };
     std::atomic<bool> listen { true };   // "desconectar" el MIDI del DAW sin tocar Ableton
+    std::atomic<bool> allOffRequest { false };  // apagar todas las notas (pedido desde la interfaz)
+    std::atomic<double> currentRate { 44100.0 };
 
     // Tamaño de la ventana (se guarda con el proyecto)
     std::atomic<int> editorW { 1180 }, editorH { 760 };
@@ -68,6 +70,11 @@ private:
     PianoEngine piano;
     std::atomic<float>* pianoOn = nullptr;
     std::atomic<float>* volume = nullptr;
+    std::atomic<float>* latencyMs = nullptr;
+
+    // Compensación de latencia: las notas de afuera se retrasan N ms (sonido y luces juntos)
+    juce::MidiBuffer delayQueue, delayScratch;
+    int lastDelaySamples = 0;
     bool wasOn = true;
     bool wasListening = true;
     juce::SmoothedValue<float> gainSmooth;

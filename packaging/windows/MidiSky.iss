@@ -1,6 +1,6 @@
 ﻿; Instalador de MidiSky para Windows (Inno Setup 6)
 #ifndef AppVersion
-  #define AppVersion "1.0.0"
+  #define AppVersion "1.1.0"
 #endif
 #define ArtDir "..\..\build\MidiSky_artefacts\Release"
 
@@ -17,6 +17,7 @@ DisableProgramGroupPage=yes
 DisableDirPage=yes
 OutputDir=..\..\dist
 OutputBaseFilename=MidiSky-Instalador-Windows
+SetupIconFile=MidiSky.ico
 Compression=lzma2
 SolidCompression=yes
 ArchitecturesAllowed=x64compatible

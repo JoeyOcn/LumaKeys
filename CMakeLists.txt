@@ -10,7 +10,7 @@ if(APPLE)
     endif()
 endif()
 
-project(MidiSky VERSION 1.0.0 LANGUAGES C CXX)
+project(MidiSky VERSION 1.1.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -45,6 +45,8 @@ juce_add_plugin(MidiSky
     VST3_CATEGORIES Instrument Tools
     AU_MAIN_TYPE kAudioUnitType_MusicDevice
     DESCRIPTION "Visualizador de escalas, acordes y notas con piano"
+    ICON_BIG "${CMAKE_CURRENT_SOURCE_DIR}/assets/icon/icon_1024.png"
+    ICON_SMALL "${CMAKE_CURRENT_SOURCE_DIR}/assets/icon/icon_256.png"
     MICROPHONE_PERMISSION_ENABLED FALSE)
 
 juce_generate_juce_header(MidiSky)
@@ -55,18 +57,26 @@ target_sources(MidiSky PRIVATE
     Source/PianoEngine.cpp
     Source/Theory.cpp
     Source/Views.cpp
+    Source/Sections.cpp
+    Source/Floating.cpp
     Source/Style.cpp)
 
 file(GLOB MIDISKY_PIANO_SAMPLES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/assets/piano/*.ogg)
+file(GLOB MIDISKY_TEXTURES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/assets/tex/*.jpg)
 juce_add_binary_data(MidiSkyData
     HEADER_NAME MidiSkyData.h
     NAMESPACE MidiSkyData
     SOURCES
         ${MIDISKY_PIANO_SAMPLES}
+        ${MIDISKY_TEXTURES}
         assets/fonts/Bravura.otf
-        assets/fonts/Outfit-Regular.ttf
-        assets/fonts/Outfit-SemiBold.ttf
-        assets/fonts/Outfit-Bold.ttf)
+        assets/fonts/ShipporiMincho-Bold.ttf
+        assets/fonts/ShipporiMincho-ExtraBold.ttf
+        assets/fonts/ZenKakuGothicNew-Regular.ttf
+        assets/fonts/ZenKakuGothicNew-Medium.ttf
+        assets/fonts/ZenKakuGothicNew-Bold.ttf
+        assets/fonts/PressStart2P-Regular.ttf
+        assets/fonts/Jersey10-Regular.ttf)
 
 if(MSVC)
     target_compile_options(MidiSky PRIVATE /utf-8)
