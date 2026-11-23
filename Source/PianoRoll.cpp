@@ -627,24 +627,26 @@ void PianoRoll::paint (Graphics& g)
         Graphics::ScopedSaveState ss (g);
         g.reduceClipRegion (keys.toNearestInt());
         const int firstRow = jmax (0, topNote - (int) (keys.getHeight() / rowH) - 1);
-        g.setColour (pal.keyW);
+        // Teclado de lado siempre claro (como en FL), para que se lean bien las notas
+        const Colour whiteKey (0xffeeeeec), blackKey (0xff1c1c1f);
+        g.setColour (whiteKey);
         g.fillRect (keys);
         for (int n = topNote; n >= firstRow; --n)
         {
             const float y = yOf (n);
             if (isBlack (n))
             {
-                g.setColour (n == previewNote ? pal.accent : pal.keyB);
+                g.setColour (n == previewNote ? pal.accent : blackKey);
                 g.fillRoundedRectangle (keys.getX(), y + 0.5f, keys.getWidth() * 0.62f, rowH - 1.0f, 2.5f);
             }
             else
             {
                 if (n == previewNote) { g.setColour (pal.accent); g.fillRect (keys.getX(), y, keys.getWidth(), rowH); }
                 const int pc = n % 12;
-                if (pc == 4 || pc == 11) { g.setColour (pal.keyWEdge.withAlpha (0.6f)); g.drawHorizontalLine (roundToInt (y), keys.getX(), keys.getRight()); }
+                if (pc == 4 || pc == 11) { g.setColour (Colours::black.withAlpha (0.18f)); g.drawHorizontalLine (roundToInt (y), keys.getX(), keys.getRight()); }
                 if (pc == 0)
                 {
-                    g.setColour (pal.keyWEdge.withAlpha (0.8f));
+                    g.setColour (Colours::black.withAlpha (0.3f));
                     g.drawHorizontalLine (roundToInt (y + rowH), keys.getX(), keys.getRight());
                     g.setColour (Colours::black.withAlpha (0.6f));
                     g.setFont (ctx.fonts.ui (jmin (12.0f, rowH * 0.8f), 2));

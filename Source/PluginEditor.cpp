@@ -947,14 +947,25 @@ void MidiSkyEditor::frame()
 
     // Teclado: seguir las notas que salen del rango y deslizar suavemente
     {
-        int lowOut = 200, highOut = -1;
-        for (auto n : vis.active)   // solo lo que se está tocando ahora
+        // Solo se mueve si TODO lo que tocas cabe en las octavas que elegiste; si no cabe
+        // (por ejemplo con 2 octavas y las manos separadas), se queda quieto en vez de
+        // brincar de un lado a otro.
+        if (! vis.active.empty() && ! keyboard.isMouseButtonDown (true))
         {
-            if (n < prefs->startC) lowOut = jmin (lowOut, n);
-            if (n > prefs->startC + 12 * prefs->octaves) highOut = jmax (highOut, n);
+            const int lo = vis.active.front(), hi = vis.active.back();
+            const int span = 12 * prefs->octaves;
+            const int start = prefs->startC;
+            const bool fits = lo >= start && hi <= start + span;
+            if (! fits)
+            {
+                int best = -1;
+                for (int c = 12; c <= 108 - span; c += 12)
+                    if (c <= lo && c + span >= hi && (best < 0 || std::abs (c - start) < std::abs (best - start)))
+                        best = c;
+                if (best >= 0 && best != start)
+                    applyRange (best, prefs->octaves);
+            }
         }
-        if (lowOut < 200 && highOut < 0) applyRange ((lowOut / 12) * 12, prefs->octaves);
-        else if (highOut >= 0 && lowOut == 200) applyRange ((highOut / 12) * 12 - 12 * (prefs->octaves - 1), prefs->octaves);
 
         const float tw = (float) whiteIndexOfNote (prefs->startC);
         const float tn = (float) (prefs->octaves * 7 + 1);
