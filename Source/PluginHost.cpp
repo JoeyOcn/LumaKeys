@@ -1,8 +1,9 @@
-#include "PluginHost.h"
-
-#if JUCE_MAC
+// Los encabezados de Apple van antes que JUCE para que no choquen nombres (Point, AudioBuffer…)
+#if defined (__APPLE__)
  #include <AudioToolbox/AudioToolbox.h>
 #endif
+
+#include "PluginHost.h"
 
 using namespace juce;
 
@@ -298,14 +299,14 @@ void PluginHost::release()
     if (inst != nullptr) inst->releaseResources();
 }
 
-bool PluginHost::render (AudioBuffer<float>& out, MidiBuffer& midi, int n) noexcept
+bool PluginHost::render (juce::AudioBuffer<float>& out, MidiBuffer& midi, int n) noexcept
 {
     const ScopedTryLock sl (lock);
     if (! sl.isLocked() || inst == nullptr) return false;
     const int ch = jmax (2, inst->getTotalNumInputChannels(), inst->getTotalNumOutputChannels());
     if (scratch.getNumChannels() < ch || scratch.getNumSamples() < n) return false;
 
-    AudioBuffer<float> view (scratch.getArrayOfWritePointers(), ch, n);
+    juce::AudioBuffer<float> view (scratch.getArrayOfWritePointers(), ch, n);
     view.clear();
     inst->processBlock (view, midi);
 
