@@ -117,6 +117,7 @@ public:
     std::function<void()> onClickWithoutFile;   // por ejemplo, pasar a audio
     juce::String text, icon, textWithoutFile;
     float progress = -1.0f;                      // 0..1 mientras se hace el archivo
+    bool compact = false;                        // pastilla plana y chiquita
 
 private:
     UiContext& ctx;

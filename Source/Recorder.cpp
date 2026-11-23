@@ -1,4 +1,5 @@
 #include "Recorder.h"
+#include "Theory.h"
 
 using namespace juce;
 
@@ -172,7 +173,18 @@ void MidiRecorder::injectBounce (MidiBuffer& midi, int n) noexcept
 
 File MidiRecorder::folder()
 {
-    return File::getSpecialLocation (File::userMusicDirectory).getChildFile ("Midi Cat").getChildFile ("Grabaciones");
+    const auto music = File::getSpecialLocation (File::userMusicDirectory);
+    const auto dir = music.getChildFile ("MidiCat");
+    // Antes se llamaba "Midi Cat": se pasa la carpeta vieja una sola vez
+    static bool migrated = false;
+    if (! migrated)
+    {
+        migrated = true;
+        const auto old = music.getChildFile ("Midi Cat");
+        if (old.isDirectory() && ! dir.exists())
+            old.moveFileTo (dir);
+    }
+    return dir.getChildFile ("Grabaciones");
 }
 
 Array<File> MidiRecorder::recordings()
@@ -377,7 +389,8 @@ void MidiRecorder::finish()
     auto tempoMsg = MidiMessage::tempoMetaEvent ((int) std::llround (60000000.0 / bpm));
     seq.addEvent (tempoMsg, 0.0);
     seq.addEvent (MidiMessage::timeSignatureMetaEvent (beatsAtStart.load(), 4), 0.0);
-    seq.addEvent (MidiMessage::textMetaEvent (3, "Midi Cat"), 0.0);
+    if (keyRoot.load() >= 0) addKeyInfo (seq, keyRoot.load(), keyScale.load());
+    else seq.addEvent (MidiMessage::textMetaEvent (3, "MidiCat"), 0.0);
 
     std::array<int, 128> open {};
     bool pedalDown = false;
@@ -407,7 +420,7 @@ void MidiRecorder::finish()
 
     auto dir = folder();
     dir.createDirectory();
-    auto name = "Midi Cat " + Time::getCurrentTime().formatted ("%Y-%m-%d %H.%M.%S");
+    auto name = "MidiCat " + Time::getCurrentTime().formatted ("%Y-%m-%d %H.%M.%S");
     auto file = dir.getNonexistentChildFile (name, ".mid", false);
     takeBase = file.getFileNameWithoutExtension();
     FileOutputStream os (file);
@@ -418,6 +431,105 @@ void MidiRecorder::finish()
     }
     if (os.getStatus().wasOk() && onSaved)
         onSaved (file);
+}
+
+//==============================================================================
+// La tonalidad dentro del MIDI
+//==============================================================================
+String MidiRecorder::keyText (int root, int scale) { return "MidiCat key=" + String (root) + "," + String (scale); }
+
+void MidiRecorder::addKeyInfo (MidiMessageSequence& seq, int root, int scale)
+{
+    root = theory::pcOf (root);
+    scale = jlimit (0, theory::numScales() - 1, scale);
+    const auto sig = theory::keySignature (root, scale);
+    const bool minor = theory::scales()[(size_t) scale].minorFlavour;
+    // Nombre de la pista = la tonalidad (así se ve en FL, Logic y Ableton)
+    seq.addEvent (MidiMessage::textMetaEvent (3, theory::keyTitle (root, scale, true)), 0.0);
+    seq.addEvent (MidiMessage::keySignatureMetaEvent (sig.flats ? -sig.count : sig.count, minor), 0.0);
+    seq.addEvent (MidiMessage::textMetaEvent (1, keyText (root, scale)), 0.0);
+}
+
+MidiRecorder::KeyInfo MidiRecorder::readKeyInfo (const File& f)
+{
+    KeyInfo info;
+    MidiFile mf;
+    FileInputStream in (f);
+    if (! in.openedOk() || ! mf.readFrom (in) || mf.getTimeFormat() <= 0) return info;
+    const double tpq = (double) mf.getTimeFormat();
+    bool tempoSet = false, haveSig = false, haveText = false;
+    std::array<float, 12> hist {};
+    for (int t = 0; t < mf.getNumTracks(); ++t)
+    {
+        MidiMessageSequence seq (*mf.getTrack (t));
+        seq.updateMatchedPairs();
+        for (int i = 0; i < seq.getNumEvents(); ++i)
+        {
+            auto* e = seq.getEventPointer (i);
+            const auto& m = e->message;
+            if (m.isTempoMetaEvent() && ! tempoSet) { info.bpm = 60.0 / jmax (0.0001, m.getTempoSecondsPerQuarterNote()); tempoSet = true; }
+            else if (m.isTextMetaEvent() && m.getMetaEventType() == 1)
+            {
+                const auto txt = m.getTextFromTextMetaEvent();
+                if (txt.startsWith ("MidiCat key="))
+                {
+                    const auto parts = StringArray::fromTokens (txt.fromFirstOccurrenceOf ("=", false, false), ",", "");
+                    if (parts.size() == 2)
+                    {
+                        info.root = theory::pcOf (parts[0].getIntValue());
+                        info.scale = jlimit (0, theory::numScales() - 1, parts[1].getIntValue());
+                        haveText = true;
+                    }
+                }
+            }
+            else if (m.isKeySignatureMetaEvent() && ! haveText && ! haveSig)
+            {
+                const int sf = m.getKeySignatureNumberOfSharpsOrFlats();
+                const bool minor = ! m.isKeySignatureMajorKey();
+                const int major = theory::pcOf (sf * 7);
+                info.root = minor ? theory::pcOf (major + 9) : major;
+                info.scale = minor ? 1 : 0;
+                haveSig = true;
+            }
+            else if (m.isNoteOn() && e->noteOffObject != nullptr)
+            {
+                const double len = (e->noteOffObject->message.getTimeStamp() - m.getTimeStamp()) / tpq;
+                hist[(size_t) (m.getNoteNumber() % 12)] += (float) jlimit (0.1, 4.0, len) * (0.5f + m.getFloatVelocity());
+            }
+        }
+    }
+    info.fromFile = haveText || haveSig;
+    if (! info.fromFile)
+    {
+        float total = 0.0f;
+        for (auto h : hist) total += h;
+        if (total > 0.0f)
+        {
+            const auto guess = theory::guessKey (hist);
+            info.root = guess.root;
+            info.scale = guess.minor ? 1 : 0;
+        }
+    }
+    return info;
+}
+
+File MidiRecorder::dragCopy (const File& f)
+{
+    if (! f.existsAsFile()) return f;
+    const bool wav = f.hasFileExtension ("wav");
+    const auto midi = wav ? f.withFileExtension (".mid") : f;
+    if (! midi.existsAsFile()) return f;
+    const auto info = readKeyInfo (midi);
+    const String name = theory::keyTitle (info.root, info.scale, true) + " - " + String (roundToInt (info.bpm)) + " BPM";
+    // Una carpeta por archivo para que dos grabaciones en la misma tonalidad no se pisen
+    auto dir = File::getSpecialLocation (File::tempDirectory).getChildFile ("MidiCat arrastrar")
+                   .getChildFile (String::toHexString (f.getFullPathName().hashCode64()));
+    dir.createDirectory();
+    // (el # se queda: sí se puede en Mac y Windows)
+    auto out = dir.getChildFile (name.removeCharacters ("\\/:*?\"<>|") + (wav ? ".wav" : ".mid"));
+    if (out.getLastModificationTime() < f.getLastModificationTime() || ! out.existsAsFile())
+        if (! f.copyFileTo (out)) return f;
+    return out;
 }
 
 //==============================================================================

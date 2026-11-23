@@ -364,7 +364,7 @@ namespace theory
                 if (sc.steps.size() == 7)
                 {
                     auto f = degreeFunction (i, rel);
-                    return "Grado " + juce::String (i + 1) + " · " + f.upToFirstOccurrenceOf (" ·", false, false);
+                    return "Grado " + juce::String (i + 1) + juce::String::fromUTF8 (" · ") + f.upToFirstOccurrenceOf (juce::String::fromUTF8 (" ·"), false, false);
                 }
                 return "Nota " + juce::String (i + 1) + " de la escala";
             }

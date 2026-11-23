@@ -6,6 +6,7 @@
 #include "Floating.h"
 #include "Extras.h"
 #include "PianoRoll.h"
+#include "InterfaceEditor.h"
 
 //==============================================================================
 class MidiSkyLook : public juce::LookAndFeel_V4
@@ -18,6 +19,14 @@ public:
     juce::Font getLabelFont (juce::Label&) override { return fonts.ui (14.5f, 0); }
     void drawCornerResizer (juce::Graphics&, int w, int h, bool isMouseOver, bool isMouseDragging) override;
     void drawPopupMenuBackground (juce::Graphics&, int width, int height) override;
+    void drawPopupMenuItem (juce::Graphics&, const juce::Rectangle<int>& area, bool isSeparator, bool isActive, bool isHighlighted,
+                            bool isTicked, bool hasSubMenu, const juce::String& text, const juce::String& shortcutKeyText,
+                            const juce::Drawable* icon, const juce::Colour* textColour) override;
+    void drawPopupMenuSectionHeader (juce::Graphics&, const juce::Rectangle<int>&, const juce::String&) override;
+    void getIdealPopupMenuItemSize (const juce::String& text, bool isSeparator, int standardMenuItemHeight, int& idealWidth, int& idealHeight) override;
+    int getPopupMenuBorderSize() override { return 6; }
+    void drawTooltip (juce::Graphics&, const juce::String& text, int width, int height) override;
+    juce::Rectangle<int> getTooltipBounds (const juce::String& tipText, juce::Point<int> screenPos, juce::Rectangle<int> parentArea) override;
 
 private:
     Fonts& fonts;
@@ -65,8 +74,19 @@ public:
 
     void paint (juce::Graphics&) override;
     void resized() override;
+    bool keyPressed (const juce::KeyPress&) override;
+    bool keyStateChanged (bool isKeyDown) override;
 
 private:
+    // Grados con las teclas de la compu
+    void startDegree (int i);
+    void stopDegree (int i);
+    std::array<std::vector<int>, 7> heldDegree;
+    std::array<bool, 7> degreeDown {};
+    std::array<int, 128> degreeRefs {};
+    void showDegreeInputPanel();
+    void avoidForTab (int tab);
+
     void timerCallback() override;
     void changeListenerCallback (juce::ChangeBroadcaster*) override;
     void frame();

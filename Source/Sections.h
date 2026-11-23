@@ -1,9 +1,10 @@
 #pragma once
 
 #include "Views.h"
+#include "Pieces.h"
 
 //==============================================================================
-// Una sección de Midi Cat. Puede vivir dentro de la ventana principal o en su propia ventana.
+// Una sección de MidiCat. Puede vivir dentro de la ventana principal o en su propia ventana.
 class Section : public juce::Component
 {
 public:
@@ -49,6 +50,9 @@ public:
 
 protected:
     void paintContent (juce::Graphics&, juce::Rectangle<float>) override;
+
+private:
+    pieces::GlowText glowBig, glowSmall;
 };
 
 //==============================================================================
@@ -60,6 +64,7 @@ public:
     std::function<void (int, float)> onPreview;   // grado y fuerza (más abajo = más fuerte, como en FL)
     std::function<void()> onRelease;              // se soltó el mouse (el acorde dura lo que lo dejes apretado)
     std::function<void (int)> onOctave;           // subir o bajar la octava de los acordes
+    std::function<void()> onSettings;             // clic derecho: teclas y pads para los grados
     void setOctave (int o) { if (o != octave) { octave = o; repaint(); } }
     void mouseDown (const juce::MouseEvent&) override;
     void mouseUp (const juce::MouseEvent&) override;
@@ -77,6 +82,7 @@ private:
     int hover = -1, pressed = -1;
     int octave = 3, octPressed = 0;
     std::array<float, 7> press {};
+    pieces::GlowText glowCache;
 };
 
 //==============================================================================
@@ -96,6 +102,7 @@ protected:
 private:
     bool ringAt (juce::Point<float>, int& index, bool& minor) const;
     void buildLoop (const std::vector<int>& idx, float rn, float knobR, std::vector<juce::Point<float>>& out) const;
+    void buildStraight (const std::vector<int>& idx, float rn, std::vector<juce::Point<float>>& out) const;
     juce::Point<float> centre;
     float radius = 100.0f;
     int hoverIndex = -1;

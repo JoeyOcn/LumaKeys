@@ -102,6 +102,9 @@ MidiSkyProcessor::MidiSkyProcessor()
 
     if (wrapperType == wrapperType_Standalone)
         host = std::make_unique<PluginHost>();
+    for (auto& d : degreeChords) for (auto& n : d) n.store (-1);
+    for (auto& pm : padMap) pm.store (-1);
+    updateDegreeChords (0, 0, prefs->sevenths, prefs->degreeOctave);
     applyPrefs();
    #if MIDISKY_DEMO
     if (juce::SystemStats::getEnvironmentVariable ("MIDISKY_METRO", "").isNotEmpty())
@@ -122,7 +125,51 @@ void MidiSkyProcessor::applyPrefs()
     metroSettings.followHost.store (prefs->metroFollowHost);
     recorder.countIn.store (prefs->countIn);
     recorder.recordMouse.store (prefs->recordMouse);
-    recorder.recordAudio.store (prefs->recordAudio);
+    recorder.recordAudio.store (false);
+    padsOn.store (prefs->degreePadsOn);
+    for (int i = 0; i < 7; ++i) padMap[(size_t) i].store (prefs->degreePads[(size_t) i]);
+}
+
+// El acorde de un grado como suena en Midi Cat: el bajo una octava abajo y las notas juntas arriba
+std::vector<int> MidiSkyProcessor::voiceDegree (const theory::Diatonic& d, int octave)
+{
+    std::vector<int> out;
+    int prev = 48 + 12 * octave + d.rootPc;
+    if (prev < 52 + 12 * octave) prev += 12;
+    out.push_back (prev - 12);
+    out.push_back (prev);
+    for (size_t i = 1; i < d.pcs.size(); ++i)
+    {
+        int n = prev + ((d.pcs[i] - prev % 12 + 12) % 12);
+        if (n == prev) n += 12;
+        out.push_back (n);
+        prev = n;
+    }
+    for (auto& n : out) n = juce::jlimit (0, 127, n);
+    return out;
+}
+
+void MidiSkyProcessor::updateDegreeChords (int keyRoot, int scale, bool sevenths, int octave)
+{
+    const auto dia = theory::diatonicChords (keyRoot, scale, sevenths, false);
+    for (int i = 0; i < 7; ++i)
+        setDegreeChord (i, i < (int) dia.size() ? voiceDegree (dia[(size_t) i], octave) : std::vector<int>());
+}
+
+std::vector<int> MidiSkyProcessor::degreeChordNotes (int degree) const
+{
+    std::vector<int> out;
+    if (degree < 0 || degree >= 7) return out;
+    for (auto& a : degreeChords[(size_t) degree])
+        if (const int n = a.load(); n >= 0) out.push_back (n);
+    return out;
+}
+
+void MidiSkyProcessor::setDegreeChord (int degree, const std::vector<int>& chord) noexcept
+{
+    if (degree < 0 || degree >= 7) return;
+    for (int j = 0; j < 6; ++j)
+        degreeChords[(size_t) degree][(size_t) j].store (j < (int) chord.size() ? juce::jlimit (0, 127, chord[(size_t) j]) : -1);
 }
 
 bool MidiSkyProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
@@ -140,6 +187,8 @@ void MidiSkyProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     delayQueue.ensureSize (16384);
     delayScratch.ensureSize (16384);
     pedalScratch.ensureSize (8192);
+    padScratch.ensureSize (8192);
+    degreeScratch.ensureSize (4096);
     delayQueue.clear();
     lastDelaySamples = 0;
     piano.prepare (sampleRate);
@@ -203,6 +252,65 @@ void MidiSkyProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mid
         piano.allNotesOff();
     }
 
+    // Pads MIDI que tocan grados: el pad se cambia por el acorde de su grado (se oye, se ve y se graba)
+    {
+        bool anyPad = false;
+        const bool usePads = padsOn.load();
+        for (const auto meta : midi)
+        {
+            const auto m = meta.getMessage();
+            if (m.isNoteOn())
+            {
+                ++noteEventCounter;
+                lastNoteEvent.store (((noteEventCounter & 0x7fff) << 16) | (m.getChannel() << 8) | m.getNoteNumber());
+            }
+            if (usePads && m.isNoteOnOrOff()) anyPad = true;
+        }
+        if (anyPad)
+        {
+            padScratch.clear();
+            for (const auto meta : midi)
+            {
+                const auto m = meta.getMessage();
+                int deg = -1;
+                if (m.isNoteOnOrOff())
+                    for (int i = 0; i < 7 && deg < 0; ++i)
+                    {
+                        const int code = padMap[(size_t) i].load();
+                        if (code < 0) continue;
+                        const int note = code & 0x7f, ch = code >> 8;
+                        if (note == m.getNoteNumber() && (ch == 0 || ch == m.getChannel())) deg = i;
+                    }
+                if (deg < 0) { padScratch.addEvent (m, meta.samplePosition); continue; }
+                auto& held = padHeld[(size_t) deg];
+                // Primero se suelta lo que el pad dejó sonando
+                for (auto& n : held)
+                    if (n > 0 && --padRefs[(size_t) (n - 1)] == 0)
+                        padScratch.addEvent (juce::MidiMessage::noteOff (1, n - 1), meta.samplePosition);
+                held.fill (0);
+                if (m.isNoteOn())
+                {
+                    const float vel = m.getFloatVelocity();
+                    for (int j = 0; j < 6; ++j)
+                    {
+                        const int n = degreeChords[(size_t) deg][(size_t) j].load();
+                        if (n < 0) continue;
+                        held[(size_t) j] = n + 1;
+                        if (padRefs[(size_t) n]++ == 0)
+                            padScratch.addEvent (juce::MidiMessage::noteOn (1, n, vel), meta.samplePosition);
+                    }
+                }
+            }
+            midi.swapWith (padScratch);
+        }
+    }
+
+    // Grados con las teclas de la compu: van con lo de afuera (siempre se graban)
+    degreeScratch.clear();
+    degreeKeyboard.processNextMidiBuffer (degreeScratch, 0, n, true);
+    for (const auto meta : degreeScratch)
+        midi.addEvent (meta.getMessage(), meta.samplePosition);
+
     // Lo tocado con el mouse va aparte (para poder grabarlo o no)
     mouseScratch.clear();
     uiKeyboard.processNextMidiBuffer (mouseScratch, 0, n, true);
@@ -242,7 +350,7 @@ void MidiSkyProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mid
 
     if (on)
     {
-        // Con un instrumento tuyo cargado (app sola), suena ese; si no, el piano de Midi Cat
+        // Con un instrumento tuyo cargado (app sola), suena ese; si no, el piano de MidiCat
         const bool hosted = host != nullptr && host->hasInstrument() && host->render (buffer, midi, n);
         if (hosted != wasHosted) { piano.allNotesOff(); wasHosted = hosted; }
         if (! hosted)

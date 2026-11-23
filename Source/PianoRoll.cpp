@@ -100,7 +100,7 @@ public:
         if (! f.existsAsFile()) return;
         started = true;
         SafePointer<DragOut> safe (this);
-        DragAndDropContainer::performExternalDragDropOfFiles ({ f.getFullPathName() }, false, this,
+        DragAndDropContainer::performExternalDragDropOfFiles ({ MidiRecorder::dragCopy (f).getFullPathName() }, false, this,
             [safe] { if (auto* d = safe.getComponent()) { d->down = false; d->repaint(); } });
     }
 private:
@@ -169,6 +169,8 @@ bool PianoRoll::loadFile (const File& f)
     redoStack.clear();
     bpm = 120.0;
     beatsPerBar = 4;
+    keyRoot = -1;
+    keyScale = 0;
 
     MidiFile mf;
     FileInputStream in (f);
@@ -186,6 +188,11 @@ bool PianoRoll::loadFile (const File& f)
                 const auto& m = e->message;
                 const double beat = m.getTimeStamp() / tpq;
                 if (m.isTempoMetaEvent()) { if (! tempoSet) { bpm = 60.0 / jmax (0.0001, m.getTempoSecondsPerQuarterNote()); tempoSet = true; } }
+                else if (m.isTextMetaEvent() && m.getMetaEventType() == 1 && m.getTextFromTextMetaEvent().startsWith ("MidiCat key="))
+                {
+                    const auto parts = StringArray::fromTokens (m.getTextFromTextMetaEvent().fromFirstOccurrenceOf ("=", false, false), ",", "");
+                    if (parts.size() == 2) { keyRoot = parts[0].getIntValue(); keyScale = parts[1].getIntValue(); }
+                }
                 else if (m.isTimeSignatureMetaEvent()) { int num = 4, den = 4; m.getTimeSignatureInfo (num, den); beatsPerBar = jlimit (1, 16, num); }
                 else if (m.isNoteOn())
                 {
@@ -229,7 +236,8 @@ void PianoRoll::save()
     MidiMessageSequence seq;
     seq.addEvent (MidiMessage::tempoMetaEvent ((int) std::llround (60000000.0 / bpm)), 0.0);
     seq.addEvent (MidiMessage::timeSignatureMetaEvent (beatsPerBar, 4), 0.0);
-    seq.addEvent (MidiMessage::textMetaEvent (3, "Midi Cat"), 0.0);
+    if (keyRoot >= 0) MidiRecorder::addKeyInfo (seq, keyRoot, keyScale);   // la tonalidad se conserva
+    else seq.addEvent (MidiMessage::textMetaEvent (3, "MidiCat"), 0.0);
     for (auto& o : others)
     {
         auto m = o.msg;
@@ -696,29 +704,40 @@ void PianoRoll::paint (Graphics& g)
             g.drawVerticalLine (roundToInt (xOf (b)), grid.getY(), grid.getBottom());
         }
 
-        // Notas
+        // Notas: cuadradas y planas como en Ableton (sin bordes); la fuerza se ve en lo intenso del color
         const bool labels = rowH >= 9.5f;
         g.setFont (noteFont);
+        const auto bgCol = pal.card;
+        const auto selCol = pal.accent.interpolatedWith (pal.night ? Colours::white : Colour (0xff101012), 0.42f);
         for (auto& n : notes)
         {
             if (n.note < rowBottom || n.note > rowTop) continue;
-            const float x1 = xOf (n.start), x2 = xOf (n.start + n.length);
+            const float x1 = std::round (xOf (n.start)), x2 = std::round (xOf (n.start + n.length));
             if (x2 < grid.getX() || x1 > grid.getRight()) continue;
-            const float y = yOf (n.note);
-            auto r = Rectangle<float> (x1 + 0.5f, y + 1.0f, jmax (3.0f, x2 - x1 - 1.0f), jmax (3.0f, rowH - 2.0f));
+            const float y1 = std::round (yOf (n.note)), y2 = std::round (yOf (n.note) + rowH);
+            // 1 pixel libre a la derecha y abajo: las notas pegadas se distinguen sin necesidad de borde
+            auto r = Rectangle<float> (x1, y1 + 1.0f, jmax (2.0f, x2 - x1 - 1.0f), jmax (2.0f, y2 - y1 - 1.0f));
             const float v = (float) n.velocity / 127.0f;
-            auto col = pal.accent.withMultipliedSaturation (0.6f + 0.4f * v).withMultipliedBrightness (0.82f + 0.18f * v);
-            if (n.selected) col = col.brighter (0.22f);   // como en Ableton: la elegida se ilumina, las demás no se apagan
-            const float rad = jmin (3.0f, r.getHeight() * 0.35f);
+            auto col = n.selected ? selCol : pal.accent.interpolatedWith (bgCol, 0.55f * (1.0f - v));
             g.setColour (col);
-            g.fillRoundedRectangle (r, rad);
-            g.setColour (n.selected ? (pal.night ? Colours::white : ink) : col.darker (0.45f));
-            g.drawRoundedRectangle (r.reduced (0.5f), rad, n.selected ? 2.0f : 1.0f);
-            if (labels && r.getWidth() > 28.0f)
+            g.fillRect (r);
+            if (labels && r.getWidth() > 26.0f)
             {
-                g.setColour (pal.accentInk.withAlpha (0.9f));
+                g.setColour ((col.getPerceivedBrightness() > 0.6f ? Colour (0xff111111) : Colours::white).withAlpha (0.85f));
                 g.drawText (String (pcNames[n.note % 12]) + String (n.note / 12 - 1), r.reduced (4.0f, 0.0f), Justification::centredLeft, false);
             }
+        }
+
+        // Lápiz: muestra exactamente dónde caerá la nota
+        if (drawMode && ghostPitch >= 0 && drag == none)
+        {
+            const float x1 = std::round (xOf (ghostBeat)), x2 = std::round (xOf (ghostBeat + gridOrDefault()));
+            const float y1 = std::round (yOf (ghostPitch)), y2 = std::round (yOf (ghostPitch) + rowH);
+            auto r = Rectangle<float> (x1, y1 + 1.0f, jmax (2.0f, x2 - x1 - 1.0f), jmax (2.0f, y2 - y1 - 1.0f));
+            g.setColour (pal.accent.withAlpha (0.28f));
+            g.fillRect (r);
+            g.setColour (pal.accent.withAlpha (0.8f));
+            g.drawRect (r, 1.0f);
         }
 
         if (drag == marquee)
@@ -884,8 +903,12 @@ void PianoRoll::mouseDown (const MouseEvent& e)
         }
         for (auto& n : notes) n.selected = false;
         drawPitch = noteOfY (p.y);
-        addNote (drawPitch, snapFloor (beatOf (p.x)));
-        insertBeat = snapFloor (beatOf (p.x));
+        strokeCells.clear();
+        const double q = gridOrDefault();
+        const double b = jmax (0.0, std::floor (beatOf (p.x) / q + 1.0e-9) * q);
+        addNote (drawPitch, b);
+        strokeCells[(long long) std::llround (b / q)] = notes.size() - 1;
+        insertBeat = b;
         drag = drawing;
         changed = true;
         repaint();
@@ -1026,15 +1049,36 @@ void PianoRoll::mouseDrag (const MouseEvent& e)
         }
         case drawing:
         {
-            // Arrastrar con el lápiz: va poniendo notas en cada casilla de la rejilla
+            // Lápiz como en Ableton: sigue al mouse a los lados y también arriba y abajo
+            // (cada casilla de la rejilla tiene una nota; si regresas, la nota cambia de altura).
+            // Con Shift la altura se queda fija.
             const double q = gridOrDefault();
-            const double from = jmin (beatOf (lastPos.x), beatOf (p.x)), to = jmax (beatOf (lastPos.x), beatOf (p.x));
-            for (double b = std::floor (from / q) * q; b <= to + 1.0e-9; b += q)
+            const double bA = beatOf (lastPos.x), bB = beatOf (p.x);
+            const long long cA = (long long) std::floor (bA / q + 1.0e-9), cB = (long long) std::floor (bB / q + 1.0e-9);
+            const long long lo = jmin (cA, cB), hi = jmax (cA, cB);
+            for (long long cell = lo; cell <= hi; ++cell)
             {
+                const double b = (double) cell * q;
                 if (b < 0.0) continue;
+                // Altura en esa casilla: la del trazo entre el punto anterior y el actual
+                const double mid = b + q * 0.5;
+                const float t = std::abs (bB - bA) < 1.0e-9 ? 1.0f : (float) jlimit (0.0, 1.0, (mid - bA) / (bB - bA));
+                const int pitch = e.mods.isShiftDown() ? drawPitch : noteOfY (lastPos.y + (p.y - lastPos.y) * (cA == cB ? 1.0f : t));
+                auto it = strokeCells.find (cell);
+                if (it != strokeCells.end())
+                {
+                    auto& n = notes[it->second];
+                    if (n.note != pitch) { n.note = pitch; previewPitch (pitch, n.velocity); changed = true; }
+                    continue;
+                }
                 bool exists = false;
-                for (auto& n : notes) if (n.note == drawPitch && std::abs (n.start - b) < 1.0e-6) exists = true;
-                if (! exists) { addNote (drawPitch, b); changed = true; }
+                for (auto& n : notes) if (n.note == pitch && std::abs (n.start - b) < 1.0e-6) exists = true;
+                if (! exists)
+                {
+                    addNote (pitch, b);
+                    strokeCells[cell] = notes.size() - 1;
+                    changed = true;
+                }
             }
             break;
         }
@@ -1114,17 +1158,60 @@ void PianoRoll::mouseDoubleClick (const MouseEvent& e)
     commit();
 }
 
+static MouseCursor pencilCursor()
+{
+    // Lápiz con la punta exacta abajo a la izquierda (como en Ableton)
+    static MouseCursor cursor = []
+    {
+        const int s = 56;   // al doble, para que se vea nítido en pantallas Retina
+        Image img (Image::ARGB, s, s, true);
+        {
+            Graphics g (img);
+            g.addTransform (AffineTransform::scale (2.0f));
+            Path body;
+            body.startNewSubPath (3.0f, 25.0f);           // punta
+            body.lineTo (6.0f, 17.0f);
+            body.lineTo (20.0f, 3.0f);
+            body.lineTo (25.0f, 8.0f);
+            body.lineTo (11.0f, 22.0f);
+            body.closeSubPath();
+            g.setColour (Colours::white);
+            g.strokePath (body, PathStrokeType (3.2f, PathStrokeType::curved, PathStrokeType::rounded));
+            g.setColour (Colour (0xff1c1c1f));
+            g.fillPath (body);
+            g.setColour (Colours::white.withAlpha (0.9f));
+            g.drawLine (7.0f, 17.5f, 10.5f, 21.0f, 1.2f);
+            g.drawLine (17.5f, 5.5f, 22.5f, 10.5f, 1.2f);
+        }
+        return MouseCursor (ScaledImage (img, 2.0), { 3, 25 });
+    }();
+    return cursor;
+}
+
 void PianoRoll::mouseMove (const MouseEvent& e)
 {
     const auto p = e.position;
     MouseCursor c = MouseCursor::NormalCursor;
+    const int oldGhost = ghostPitch;
+    const double oldBeat = ghostBeat;
+    ghostPitch = -1;
     if (gridArea().contains (p))
     {
         int edge = 0;
         const int idx = noteAt (p, edge);
-        if (drawMode) c = MouseCursor::CrosshairCursor;
+        if (drawMode)
+        {
+            c = pencilCursor();
+            if (idx < 0)
+            {
+                const double q = gridOrDefault();
+                ghostPitch = noteOfY (p.y);
+                ghostBeat = jmax (0.0, std::floor (beatOf (p.x) / q + 1.0e-9) * q);
+            }
+        }
         else if (idx >= 0) c = edge != 0 ? MouseCursor::LeftRightResizeCursor : MouseCursor::NormalCursor;
     }
+    if (ghostPitch != oldGhost || std::abs (ghostBeat - oldBeat) > 1.0e-9) repaint (gridArea().toNearestInt());
     else if (laneArea().contains (p)) c = MouseCursor::UpDownResizeCursor;
     else if (rulerArea().contains (p)) c = MouseCursor::UpDownLeftRightResizeCursor;
     else if (keysArea().contains (p)) c = MouseCursor::PointingHandCursor;
@@ -1323,12 +1410,39 @@ PianoRollWindow::PianoRollWindow (UiContext& c, MidiKeyboardState& kb, LookAndFe
     setResizeLimits (720, 420, 6000, 4000);
     setAlwaysOnTop (true);   // que no se esconda detrás de la ventana del plugin
     centreWithSize (getWidth(), getHeight());
+    startTimer (400);
 }
 
 PianoRollWindow::~PianoRollWindow()
 {
+    stopTimer();
     clearContentComponent();
     setLookAndFeel (nullptr);
+}
+
+#if JUCE_MAC
+void midicatSetWindowAbove (void* nsViewHandle, bool above);
+bool midicatIsWindowFullScreen (void* nsViewHandle);
+#endif
+
+void PianoRollWindow::keepInFront()
+{
+    auto* peer = getPeer();
+    if (peer == nullptr || ! isVisible()) return;
+    // ¿Ocupa toda la pantalla? (pantalla completa del sistema o casi todo el monitor)
+    bool big = isFullScreen() || peer->isFullScreen();
+   #if JUCE_MAC
+    big = big || midicatIsWindowFullScreen (peer->getNativeHandle());
+   #endif
+    if (auto* d = Desktop::getInstance().getDisplays().getDisplayForRect (getScreenBounds()))
+        big = big || (getWidth() >= d->userArea.getWidth() * 0.85f && getHeight() >= d->userArea.getHeight() * 0.8f);
+    if (big == raised) return;
+    raised = big;
+   #if JUCE_MAC
+    midicatSetWindowAbove (peer->getNativeHandle(), big);
+   #else
+    if (big) toFront (false);
+   #endif
 }
 
 void PianoRollWindow::open (const File& f)

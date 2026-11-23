@@ -3,6 +3,7 @@
 #include <JuceHeader.h>
 #include <vector>
 #include <map>
+#include <array>
 
 // Texto con acentos: siempre pasar por UTF-8.
 inline juce::String U8 (const char* s) { return juce::String::fromUTF8 (s); }
@@ -17,7 +18,12 @@ struct Fonts
     juce::Font pixel (float height) const;                 // Jersey 10 (pantalla del estilo Sampler)
     juce::Font music (float emPixels) const;               // Bravura (SMuFL)
 
+    // Letras para la pantalla (0 = las del estilo; ver screenFontNames())
+    juce::Font display (int which, bool pixelStyle, float height) const;
+    static juce::String displayText (int which, const juce::String&);
+
     juce::Typeface::Ptr regular, medium, bold, pixelFace, bravura;
+    juce::Typeface::Ptr doto, vt323, orbitron, monoton, arcade, sixtyfour;
 };
 
 //==============================================================================
@@ -28,6 +34,68 @@ int lookIndex (const juce::String& id);
 
 enum KeyStyle { keysPastilla = 0, keysBotones = 1, keysPlana = 2, keysClasica = 3 };
 juce::StringArray keyStyleNames();
+
+// Diseños de cada pieza (pantalla, grados, círculo, pentagrama) y el movimiento.
+// Los valores por defecto dejan todo como siempre.
+struct PieceStyle
+{
+    // Pantalla del centro
+    int scrSkin = 0;        // 0 del estilo, 1 LCD verde, 2 ámbar, 3 hielo, 4 papel, 5 vidrio, 6 neón
+    int scrFont = 0;        // ver screenFontNames()
+    int scrTexture = 0;     // 0 del diseño, 1 lisa, 2 líneas, 3 puntos, 4 grano, 5 reflejo
+    juce::Colour scrText, scrBack;   // transparentes = los del diseño
+    float scrGlow = -1.0f;  // luces (0..1); -1 = las del diseño
+    int scrMotion = 0;      // 0 deslizar, 1 fundido, 2 zoom, 3 escribir, 4 sin movimiento
+    // Grados
+    int degSkin = 0;        // 0 del estilo, 1 pastilla, 2 plano, 3 contorno, 4 pantallitas, 5 colores en fila
+    juce::Colour degColour; // luz del grado (transparente = acento)
+    // Círculo de quintas
+    int cirSkin = 0;        // 0 clásico, 1 líneas, 2 color, 3 vinilo, 4 neón
+    int cirTexture = 0;     // 0 del diseño, 1 liso, 2 surcos, 3 metal, 4 grano, 5 puntos
+    juce::Colour cirColour; // zona y tónica (transparente = acento)
+    int cirRoute = 0;       // líneas entre notas: 0 rodean el centro, 1 por debajo, 2 se difuminan en medio, 3 por encima
+    float cirLineW = 1.0f;  // grosor de las líneas (0.5..2.5)
+    float cirKnob = 1.0f;   // tamaño del botón del centro (0.5..1.15)
+    int cirNodes = 0;       // puntos de las notas: 0 con brillo, 1 anillos, 2 sin puntos
+    // Pentagrama
+    int stfSkin = 0;        // 0 tarjeta, 1 papel, 2 pizarra, 3 transparente, 4 neón, 5 pantalla
+    int stfTexture = 0;     // 0 del diseño, 1 liso, 2 papel, 3 tiza, 4 pautado, 5 puntos
+    juce::Colour stfInk, stfPaper;
+    // Formas
+    int scrShape = 0;       // pantalla: 0 redondeada, 1 recta, 2 pastilla, 3 ovalada
+    int degShape = 0;       // grados: 0 redondeados, 1 cuadrados, 2 pastilla, 3 círculos
+    int stfShape = 0;       // marco del pentagrama: 0 redondeado, 1 recto, 2 muy redondo, 3 biselado
+    int cirShape = 0;       // placa del círculo: 0 redondeada, 1 recta, 2 muy redonda, 3 sin placa
+    int btnShape = 0;       // botones de arriba y paneles: 0 redondeados, 1 círculos, 2 cuadrados
+    // Movimiento
+    bool anim = true;       // animaciones prendidas
+    float animSpeed = 1.0f; // 0.4 lento .. 2.5 rápido
+    float keyGlow = 0.5f;   // destello al tocar (0..1)
+    int keyMotion = 0;      // 0 suave, 1 al instante, 2 con estela
+    bool cirFlow = true;    // la luz que recorre las líneas del círculo
+    bool panelMotion = true;// los paneles aparecen con transición
+
+    void read (const juce::XmlElement&);
+    void write (juce::XmlElement&) const;
+};
+
+juce::StringArray screenSkinNames();
+juce::StringArray screenFontNames();
+juce::StringArray screenTextureNames();
+juce::StringArray screenMotionNames();
+juce::StringArray degreeSkinNames();
+juce::StringArray circleSkinNames();
+juce::StringArray circleTextureNames();
+juce::StringArray circleRouteNames();
+juce::StringArray circleNodeNames();
+juce::StringArray staffSkinNames();
+juce::StringArray staffTextureNames();
+juce::StringArray keyMotionNames();
+juce::StringArray screenShapeNames();
+juce::StringArray degreeShapeNames();
+juce::StringArray frameShapeNames();
+juce::StringArray plateShapeNames();
+juce::StringArray buttonShapeNames();
 
 // Paleta ya resuelta: todo lo que se necesita para dibujar
 struct Skin
@@ -46,6 +114,11 @@ struct Skin
     bool pixelScreen = false;   // letras pixeladas en la pantalla (Sampler)
     int keyStyle = keysPastilla;
     bool rainbow = false;
+    int texture = 0;            // textura del cuerpo: 0 nada, 1 metal cepillado, 2 papel, 3 grano
+    bool flat = false;          // botones planos con contorno (estilo Papel)
+    bool neon = false;          // bordes que brillan (estilo Neón)
+    bool stepColours = false;   // grados de colores en fila (estilo Ritmo)
+    PieceStyle pieces;
 
     juce::Colour noteColour (int midiNote) const;
     juce::Colour noteTag (int index) const;   // colores de las etiquetas de notas en la pantalla
@@ -75,6 +148,7 @@ struct ThemePreset
     int dayNight = 0, keyStyle = -1;
     juce::Colour uiTint, uiAccent, keyLit, keyWhite, keyBlack;
     bool rainbow = false;
+    PieceStyle pieces;
 };
 
 // Un acomodo guardado de las ventanas (separadas, invisibles, minimizadas…)
@@ -118,8 +192,18 @@ public:
     bool metroFollowHost = true;
     bool countIn = true;
     bool recordMouse = true;
-    bool recordAudio = true;
+    bool recordAudio = false;      // ya no se ofrece (solo "Pasar a audio")
     int degreeOctave = 0;          // octava de los acordes de los grados (-2..2)
+
+    // Diseño de cada pieza y movimiento
+    PieceStyle pieces;
+
+    // Tocar los grados con teclas de la compu o con pads MIDI (no se ven en la interfaz)
+    std::array<int, 7> degreeKeys { { '1', '2', '3', '4', '5', '6', '7' } };   // 0 = sin tecla
+    std::array<int, 7> degreePads { { -1, -1, -1, -1, -1, -1, -1 } };          // nota + 256 * canal (canal 0 = cualquiera); -1 = sin pad
+    bool degreeKeysOn = true, degreePadsOn = true;
+    static juce::String keyName (int code);
+    static juce::String padName (int code);
 
     // Tus presets
     std::vector<ThemePreset> themes;

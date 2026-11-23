@@ -1,7 +1,7 @@
-Midi Cat para Mac
+MidiCat para Mac
 =================
 
-(Antes se llamaba MidiSky. El instalador quita la versión vieja solito.)
+(Antes se llamaba MidiSky y luego "Midi Cat". El instalador quita las versiones viejas solito.)
 
 Lo más fácil: usa el instalador (MidiCat-Instalador-Mac.pkg).
 Clic derecho > Abrir > Abrir, luego "Continuar" e "Instalar". Pone el plugin
@@ -9,41 +9,41 @@ donde Ableton lo busca solo. Lo de abajo es solo si prefieres copiarlo a mano.
 
 Qué hay en esta carpeta
 -----------------------
-- Midi Cat.app        -> la app sola (no necesita Ableton)
-- Midi Cat.vst3       -> el plugin VST3
-- Midi Cat.component  -> el plugin Audio Unit (AU)
+- MidiCat.app        -> la app sola (no necesita Ableton)
+- MidiCat.vst3       -> el plugin VST3
+- MidiCat.component  -> el plugin Audio Unit (AU)
 
 Instalar el plugin para Ableton Live
 ------------------------------------
 1. Abre Finder y en el menú "Ir" elige "Ir a la carpeta…".
-2. Escribe:  ~/Library/Audio/Plug-Ins/VST3   y copia ahí Midi Cat.vst3
-3. Repite con:  ~/Library/Audio/Plug-Ins/Components   y copia ahí Midi Cat.component
+2. Escribe:  ~/Library/Audio/Plug-Ins/VST3   y copia ahí MidiCat.vst3
+3. Repite con:  ~/Library/Audio/Plug-Ins/Components   y copia ahí MidiCat.component
 4. En Ableton: Configuración > Plug-Ins > activa "Usar carpeta del sistema de Audio Units"
    y "Usar carpeta del sistema VST3", y dale "Reescanear".
-5. Midi Cat aparece en el navegador de Ableton, en Plug-Ins > Joey Ocn.
+5. MidiCat aparece en el navegador de Ableton, en Plug-Ins > Joey Ocn.
 
 Si la Mac dice que no puede abrirlo
 -----------------------------------
 Es normal en apps que no vienen de la App Store.
-- App: clic derecho sobre Midi Cat.app > Abrir > Abrir.
+- App: clic derecho sobre MidiCat.app > Abrir > Abrir.
 - Plugin: Configuración del Sistema > Privacidad y seguridad > baja hasta
-  ver el aviso de Midi Cat y dale "Abrir de todos modos". Luego reescanea en Ableton.
+  ver el aviso de MidiCat y dale "Abrir de todos modos". Luego reescanea en Ableton.
 
 Cómo usarlo
 -----------
-- Solo para ver y escuchar: arrastra Midi Cat a una pista MIDI, ármala y toca.
+- Solo para ver y escuchar: arrastra MidiCat a una pista MIDI, ármala y toca.
 - "Sonido" (abajo a la izquierda): elige el piano. Hay piano de cola, de concierto,
   suave, de bar, eléctrico (con y sin trémolo), celesta, de juguete y clavecín.
   El switch "Piano" lo apaga si solo quieres ver.
 - "Pedal" (abajo a la derecha): sostiene las notas como el pedal de un piano,
   sin pedal físico. Tócalo otra vez para soltarlo.
-- "Teclas" e "Interfaz" (junto al teclado): cambia la forma y el color de las
-  teclas y el color de toda la ventana. Los paneles se cierran con la X,
-  con Esc o con un clic afuera.
+- "Interfaz" (junto al teclado): personaliza TODO en un solo lugar (ver abajo).
+  Los paneles se cierran con la X, con Esc o con un clic afuera, y se mueven
+  arrastrándolos del título.
 - Para ver lo que tocas con OTRO instrumento: crea un Instrument Rack,
-  pon tu instrumento en una cadena y Midi Cat en otra, y apaga su piano.
-- "MIDI" arriba: clic para pausar o reanudar lo que Midi Cat escucha de Ableton.
-  No desconecta nada en Ableton.
+  pon tu instrumento en una cadena y MidiCat en otra, y apaga su piano.
+- "MIDI" arriba: clic para pausar o reanudar lo que MidiCat escucha de Ableton.
+  No desconecta nada en Ableton. La latencia ahora está en el menú (☰ > Latencia…).
 
 Metrónomo, grabadora y piano roll (botones de arriba)
 -----------------------------------------------------
@@ -56,15 +56,17 @@ grabar y metrónomo | día/noche y color | ventanas | ocultar y menú.
 - Botón rojo: graba lo que tocas (y si quieres, también lo que tocas con el mouse,
   incluidos los grados). Con metrónomo hay una cuenta de 1 compás y el MIDI cae
   justo en el compás. La flechita abre tus grabaciones.
-- "Grabar audio (WAV) también": además del MIDI guarda el audio con el sonido
-  que elegiste (piano, eléctrico o tu instrumento VST3/AU), listo como sample.
-- Tus grabaciones se guardan solas en la carpeta Música > Midi Cat > Grabaciones.
-  En la lista cada una tiene dos chips: "MIDI" y "Audio". Arrástralos directo
-  a la vista Arrangement de Ableton o a la Playlist de FL, sin abrir el piano roll.
+- Tus grabaciones se guardan solas en la carpeta Música > MidiCat > Grabaciones.
+  En la lista cada una tiene dos chips: "MIDI" y "Audio"; y arriba de la vista
+  de la grabación elegida están "MIDI", "Audio" y "Editar piano". Arrástralos directo
+  a cualquier DAW (Ableton, FL Studio, Logic…). El archivo llega con la tonalidad
+  en el nombre, por ejemplo "Sib mayor - 96 BPM".
   "→ Audio" pasa ese MIDI a audio con el sonido elegido (se oye mientras se pasa,
   tarda lo que dura el MIDI). Si editas el MIDI, vuelve a salir "→ Audio".
-- Piano roll (lápiz): editas como en Ableton.
+- Piano roll ("Editar piano"): se ve y se edita como en Ableton (notas cuadradas y planas).
     Doble clic: pone o quita una nota.      B: lápiz (pintar notas) on/off.
+    Lápiz: se ve dónde caerá la nota; arrastra para pintar siguiendo al mouse,
+    también arriba y abajo (Shift = misma altura). Lápiz sobre una nota: la quita.
     Arrastrar en vacío: elegir varias.      Shift+clic: sumar o quitar de la selección.
     Arrastrar nota: moverla. Orillas: alargar o acortar.
     Option+arrastrar: copiar.                Cmd+arrastrar arriba/abajo: fuerza (velocity);
@@ -76,26 +78,56 @@ grabar y metrónomo | día/noche y color | ventanas | ocultar y menú.
     Arrastra arriba/abajo en la regla de compases para hacer zoom.
     Espacio reproduce. Clic derecho: menú con todo.
   Todo se guarda solo. "Arrastra MIDI" y "Arrastra audio" lo llevan a tu proyecto.
+  En pantalla completa el piano roll se queda al frente de la ventana del plugin.
 - Al tocar con el mouse: entre más abajo das clic en la tecla o el grado, más fuerte suena.
 - Grados (I a VII): a su derecha está la octava en la que suenan; flechita arriba o abajo
   para cambiarla.
+- Grados con teclas de la compu y pads: las teclas 1 a 7 tocan los grados I a VII
+  (suenan y se graban; en la interfaz no se ve nada). Para cambiarlas o usar los pads
+  de tu controlador (finger drumming): clic derecho en los grados, o ☰ > "Grados:
+  teclas y pads…". Haz clic en la casilla y presiona la tecla o toca el pad
+  ("Aprender los 7 pads" los toma en orden). En Ableton, haz clic en MidiCat primero
+  para que las teclas le lleguen.
+
+Personalizar (botón "Interfaz")
+-------------------------------
+Todo en un solo panel, y cada cambio se ve al instante (el panel se mueve solo
+para no tapar lo que editas, y también lo puedes arrastrar del título):
+- Estilo: Campo, Sampler, Cristal, Metal, Ritmo, Neón y Papel; día/noche,
+  paletas rápidas, forma de los botones y tus temas.
+- Teclas: forma, arcoíris y colores (encendidas, blancas y negras).
+- Pantalla: diseño (LCD verde, ámbar, hielo, papel, vidrio, neón), letra
+  (pixel, LCD, terminal, futurista, neón, arcade, retro…), forma (recta, pastilla,
+  ovalada), textura, luces (brillo) y cómo cambia al tocar otro acorde.
+- Grados: diseño (pastilla, plano, contorno, pantallitas, colores en fila),
+  forma (cuadrados, pastilla, círculos) y color de la luz.
+- Círculo: diseño (líneas, color, vinilo, neón), cómo pasan las líneas entre
+  las notas (rodean el centro, por debajo, se difuminan o por encima), grosor,
+  tamaño del botón del centro, puntos, textura, placa y color.
+- Pentagrama: diseño (papel, pizarra, transparente, neón, pantalla), textura,
+  marco y colores de tinta y papel.
+- Movimiento: animaciones sí/no, velocidad, cómo se encienden las teclas,
+  destello, la luz del círculo y paneles con transición.
+El selector de color es preciso: cuadro y tono (Shift = movimiento fino, rueda =
+ajuste), código #hex y R G B (arrastra el número, rueda, o doble clic para escribirlo).
 
 Presets
 -------
-- Color de la interfaz > "Guardar este tema": guarda tu estilo, día/noche y colores.
+- Interfaz > Estilo > "Guardar tema": guarda estilo, colores, diseños, formas y movimiento.
 - Botón de ventanas > "Guardar este acomodo…": guarda cómo tienes las ventanas
   separadas, invisibles o minimizadas, para volver a ponerlas igual con un clic.
 
-Tus instrumentos VST3 / AU (solo en la app Midi Cat.app, sin Ableton)
+Tus instrumentos VST3 / AU (solo en la app MidiCat.app, sin Ableton)
 ---------------------------------------------------------------------
 - En "Sonido" elige "Buscar mis instrumentos…" y luego "Buscar instrumentos".
   La búsqueda va en segundo plano: puedes seguir tocando mientras revisa.
-  Midi Cat revisa tus carpetas de plugins y te deja tocar con ellos
+  MidiCat revisa tus carpetas de plugins y te deja tocar con ellos
   (y abrir su ventana). Si alguno hace que se cierre, la siguiente vez lo salta.
 
 Créditos: piano de cola Salamander Grand Piano de Alexander Holm (CC BY 3.0);
 piano de concierto Splendid Grand Piano (muestras de dominio público de Akai);
 piano eléctrico jRhodes3d de Jeff Learman (CC BY 4.0,
 https://github.com/sfzinstruments/jlearman.jRhodes3d); notación con la fuente
-Bravura (SIL OFL); tipografías Zen Kaku Gothic New y Jersey 10 (SIL OFL);
+Bravura (SIL OFL); tipografías Zen Kaku Gothic New, Jersey 10, Doto, VT323,
+Orbitron, Monoton, Press Start 2P y Sixtyfour (SIL OFL);
 hecho con JUCE (AGPLv3).

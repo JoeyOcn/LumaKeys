@@ -68,7 +68,7 @@ static File hostDataDir()
    #endif
 }
 
-PluginHost::PluginHost() : Thread ("Midi Cat: buscar plugins")
+PluginHost::PluginHost() : Thread ("MidiCat: buscar plugins")
 {
     formats.addDefaultFormats();
     dataDir = hostDataDir();
@@ -164,7 +164,7 @@ Array<PluginDescription> PluginHost::instruments() const
     for (auto& d : known.getTypes())
     {
         if (! d.isInstrument) continue;
-        bool self = d.name.containsIgnoreCase ("Midi Cat") || d.name.containsIgnoreCase ("MidiSky");
+        bool self = d.name.containsIgnoreCase ("MidiCat") || d.name.containsIgnoreCase ("Midi Cat") || d.name.containsIgnoreCase ("MidiSky");
        #if MIDISKY_DEMO
         if (SystemStats::getEnvironmentVariable ("MIDISKY_ALLOW_SELF", "").isNotEmpty()) self = false;
        #endif

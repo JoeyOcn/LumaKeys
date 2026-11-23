@@ -1,4 +1,5 @@
 #include "Views.h"
+#include "Pieces.h"
 
 using namespace juce;
 
@@ -33,7 +34,7 @@ namespace draw
             g.setColour (pal.backdrop.darker (pal.night ? 0.2f : 0.35f));
             g.fillRect (r);
         }
-        auto outer = r.reduced (0.5f);
+        auto outer = r.reduced (pal.flat ? 1.0f : 0.5f);
         const auto path = devicePath (outer, pal, k);
         {
             Graphics::ScopedSaveState ss (g);
@@ -41,11 +42,30 @@ namespace draw
             ColourGradient body (pal.body1, 0.0f, r.getY(), pal.body2, 0.0f, r.getBottom(), false);
             g.setGradientFill (body);
             g.fillRect (r);
-            // Luz suave arriba y sombra abajo, como un aparato de aluminio
-            ColourGradient top (Colours::white.withAlpha (pal.night ? 0.04f : 0.35f), 0.0f, r.getY(),
-                                Colours::white.withAlpha (0.0f), 0.0f, r.getY() + 60.0f * k, false);
-            g.setGradientFill (top);
-            g.fillRect (r);
+            if (! pal.flat)
+            {
+                // Luz suave arriba y sombra abajo, como un aparato de aluminio
+                ColourGradient top (Colours::white.withAlpha (pal.night ? 0.04f : 0.35f), 0.0f, r.getY(),
+                                    Colours::white.withAlpha (0.0f), 0.0f, r.getY() + 60.0f * k, false);
+                g.setGradientFill (top);
+                g.fillRect (r);
+            }
+        }
+        if (pal.texture > 0)
+        {
+            static const int map[4] = { 0, pieces::texBrushed, pieces::texPaper, pieces::texGrain };
+            pieces::texture (g, path, map[jlimit (0, 3, pal.texture)], pal.night, pal.texture == 1 ? 1.0f : 0.8f);
+        }
+        if (pal.flat)
+        {
+            g.setColour (pal.edge);
+            g.strokePath (path, PathStrokeType (1.6f));
+            return;
+        }
+        if (pal.neon)
+        {
+            g.setColour (pal.accent.withAlpha (pal.night ? 0.22f : 0.18f));
+            g.strokePath (devicePath (outer.reduced (2.0f), pal, k), PathStrokeType (1.2f));
         }
         g.setColour (pal.edge);
         g.strokePath (path, PathStrokeType (1.0f));
@@ -58,6 +78,20 @@ namespace draw
 
     void button (Graphics& g, Rectangle<float> r, const Skin& pal, float radius, float press, bool active, float hover)
     {
+        if (pal.flat)
+        {
+            // Papel: cara plana con contorno de tinta y una sombra dura que se esconde al presionar
+            auto face = r.withTrimmedBottom (2.5f).translated (0.0f, 2.5f * press);
+            g.setColour (pal.btnEdge);
+            g.fillRoundedRectangle (r.withTrimmedTop (2.5f).withTrimmedLeft (1.0f), radius);
+            auto top = active ? pal.accent : pal.btn;
+            if (hover > 0.0f) top = top.interpolatedWith (pal.text, 0.05f * hover);
+            g.setColour (top);
+            g.fillRoundedRectangle (face, radius);
+            g.setColour (pal.btnEdge);
+            g.drawRoundedRectangle (face.reduced (0.7f), radius, 1.4f);
+            return;
+        }
         const float depth = 2.5f * (1.0f - press);
         auto face = r.withTrimmedBottom (2.5f).translated (0.0f, 2.5f - depth);
         // Sombra suave
@@ -77,12 +111,83 @@ namespace draw
         g.drawRoundedRectangle (face.reduced (0.5f), radius, 1.0f);
         g.setColour (Colours::white.withAlpha (active ? 0.25f : ((pal.night || pal.look == 1) ? 0.08f : 0.6f)));
         g.drawLine (face.getX() + radius, face.getY() + 1.2f, face.getRight() - radius, face.getY() + 1.2f, 1.0f);
+        if (pal.neon)
+        {
+            // Neón: el borde se ilumina (más al pasar el mouse o prendido)
+            g.setColour (pal.accent.withAlpha (active ? 0.55f : 0.14f + 0.3f * hover));
+            g.drawRoundedRectangle (face.reduced (0.5f), radius, 1.2f);
+            if (active)
+            {
+                g.setColour (pal.accent.withAlpha (0.16f));
+                g.drawRoundedRectangle (face.expanded (2.5f), radius + 2.5f, 3.5f);
+            }
+        }
+    }
+
+    Path shapePath (Rectangle<float> r, int kind, float radius)
+    {
+        Path p;
+        const float half = jmin (r.getWidth(), r.getHeight()) * 0.5f;
+        switch (kind)
+        {
+            case 1: p.addRoundedRectangle (r, jmin (3.0f, radius)); break;
+            case 2: p.addRoundedRectangle (r, half); break;
+            case 3: p.addEllipse (r); break;
+            case 4:
+            {
+                const float c = jmin (radius * 1.1f, half);
+                p.startNewSubPath (r.getX() + c, r.getY());
+                p.lineTo (r.getRight() - c, r.getY());
+                p.lineTo (r.getRight(), r.getY() + c);
+                p.lineTo (r.getRight(), r.getBottom() - c);
+                p.lineTo (r.getRight() - c, r.getBottom());
+                p.lineTo (r.getX() + c, r.getBottom());
+                p.lineTo (r.getX(), r.getBottom() - c);
+                p.lineTo (r.getX(), r.getY() + c);
+                p.closeSubPath();
+                break;
+            }
+            case 5: p.addRoundedRectangle (r, jmin (radius * 2.2f, half)); break;
+            default: p.addRoundedRectangle (r, jmin (radius, half)); break;
+        }
+        return p;
+    }
+
+    void recessShape (Graphics& g, const Path& shape, const Skin& pal, Colour fill)
+    {
+        const auto r = shape.getBounds();
+        g.setColour (fill);
+        g.fillPath (shape);
+        if (pal.flat)
+        {
+            g.setColour (pal.edge.withAlpha (0.55f));
+            g.strokePath (shape, PathStrokeType (1.2f));
+            return;
+        }
+        Graphics::ScopedSaveState ss (g);
+        g.reduceClipRegion (shape);
+        ColourGradient sh (Colours::black.withAlpha (pal.night ? 0.35f : 0.12f), 0.0f, r.getY(),
+                           Colours::black.withAlpha (0.0f), 0.0f, r.getY() + 9.0f, false);
+        g.setGradientFill (sh);
+        g.fillRect (r);
+        g.setColour (Colours::black.withAlpha (pal.night ? 0.3f : 0.06f));
+        g.strokePath (shape, PathStrokeType (2.0f));
+        // Luz en el borde de abajo
+        g.reduceClipRegion (r.withTop (r.getCentreY()).toNearestInt());
+        g.setColour (Colours::white.withAlpha (pal.night ? 0.05f : 0.45f));
+        g.strokePath (shape, PathStrokeType (1.6f), AffineTransform::translation (0.0f, -0.5f));
     }
 
     void recess (Graphics& g, Rectangle<float> r, const Skin& pal, float radius, Colour fill)
     {
         g.setColour (fill);
         g.fillRoundedRectangle (r, radius);
+        if (pal.flat)
+        {
+            g.setColour (pal.edge.withAlpha (0.55f));
+            g.drawRoundedRectangle (r.reduced (0.6f), radius, 1.2f);
+            return;
+        }
         Graphics::ScopedSaveState ss (g);
         Path clip;
         clip.addRoundedRectangle (r, radius);
@@ -97,8 +202,43 @@ namespace draw
         g.drawLine (r.getX() + radius, r.getBottom() - 0.5f, r.getRight() - radius, r.getBottom() - 0.5f, 1.0f);
     }
 
+    void cardShape (Graphics& g, const Path& shape, const Skin& pal)
+    {
+        if (pal.flat)
+        {
+            g.setColour (pal.btnEdge);
+            g.fillPath (shape, AffineTransform::translation (2.5f, 3.0f));
+            g.setColour (pal.card);
+            g.fillPath (shape);
+            g.setColour (pal.btnEdge);
+            g.strokePath (shape, PathStrokeType (1.4f));
+            return;
+        }
+        for (int i = 3; i >= 1; --i)
+        {
+            g.setColour (pal.btnShadow.withMultipliedAlpha (0.18f));
+            g.fillPath (shape, AffineTransform::translation (0.0f, (float) i * 2.0f));
+        }
+        g.setColour (pal.btnEdge);
+        g.fillPath (shape, AffineTransform::translation (0.0f, 2.0f));
+        g.setColour (pal.card);
+        g.fillPath (shape);
+        g.setColour (pal.btnEdge.withMultipliedAlpha (0.8f));
+        g.strokePath (shape, PathStrokeType (1.0f));
+    }
+
     void card (Graphics& g, Rectangle<float> r, const Skin& pal, float radius)
     {
+        if (pal.flat)
+        {
+            g.setColour (pal.btnEdge);
+            g.fillRoundedRectangle (r.translated (2.5f, 3.0f), radius);
+            g.setColour (pal.card);
+            g.fillRoundedRectangle (r, radius);
+            g.setColour (pal.btnEdge);
+            g.drawRoundedRectangle (r.reduced (0.7f), radius, 1.4f);
+            return;
+        }
         for (int i = 3; i >= 1; --i)
         {
             g.setColour (pal.btnShadow.withMultipliedAlpha (0.18f));
@@ -112,22 +252,37 @@ namespace draw
         g.drawRoundedRectangle (r.reduced (0.5f), radius, 1.0f);
     }
 
-    void screen (Graphics& g, Rectangle<float> r, const Skin& pal, float k)
+    void screen (Graphics& g, Rectangle<float> r, const Skin& pal, float k, int kind)
     {
-        recess (g, r, pal, 20.0f * k, pal.body2.darker (pal.night ? 0.2f : 0.04f));
+        if (kind == 0)
+            recess (g, r, pal, 20.0f * k, pal.body2.darker (pal.night ? 0.2f : 0.04f));
+        else
+            recessShape (g, shapePath (r, kind, 20.0f * k), pal, pal.body2.darker (pal.night ? 0.2f : 0.04f));
         auto in = r.reduced (8.0f * k);
+        const auto sp = shapePath (in, kind, 14.0f * k);
         g.setColour (pal.screen);
-        g.fillRoundedRectangle (in, 14.0f * k);
+        g.fillPath (sp);
         ColourGradient glass (Colours::white.withAlpha (0.07f), in.getX(), in.getY(),
                               Colours::white.withAlpha (0.0f), in.getX() + in.getWidth() * 0.45f, in.getY() + in.getHeight() * 0.7f, false);
         g.setGradientFill (glass);
-        g.fillRoundedRectangle (in, 14.0f * k);
+        g.fillPath (sp);
         g.setColour (Colours::white.withAlpha (0.05f));
-        g.drawRoundedRectangle (in.reduced (0.5f), 14.0f * k, 1.0f);
+        g.strokePath (sp, PathStrokeType (1.0f));
     }
 
     void knobBody (Graphics& g, Point<float> c, float r, const Skin& pal, Colour cap)
     {
+        if (pal.flat)
+        {
+            g.setColour (pal.btn);
+            g.fillEllipse (c.x - r, c.y - r, r * 2.0f, r * 2.0f);
+            g.setColour (pal.btnEdge);
+            g.drawEllipse (c.x - r, c.y - r, r * 2.0f, r * 2.0f, 1.4f);
+            const float cr = r * 0.74f;
+            g.setColour (cap);
+            g.fillEllipse (c.x - cr, c.y - cr, cr * 2.0f, cr * 2.0f);
+            return;
+        }
         g.setColour (Colours::black.withAlpha (pal.night ? 0.45f : 0.18f));
         g.fillEllipse (c.x - r, c.y - r + 2.5f, r * 2.0f, r * 2.0f);
         g.setColour (pal.btn);
@@ -641,6 +796,17 @@ void Segmented::mouseUp (const MouseEvent& e)
 }
 
 //------------------------------------------------------------------------------
+// Forma de los botones elegida en Interfaz (redondeados, círculos o cuadrados)
+float shapedRadius (const Skin& pal, float normal)
+{
+    switch (pal.pieces.btnShape)
+    {
+        case 1:  return 0.5f;
+        case 2:  return jmin (normal, 0.08f);
+        default: return normal;
+    }
+}
+
 PushButton::PushButton (UiContext& c, String iconName, String tip, String text)
     : ctx (c), iconId (std::move (iconName)), label (std::move (text))
 {
@@ -684,19 +850,19 @@ void PushButton::paint (Graphics& g)
     {
         Skin p2 = pal;
         if (! activeColour.isTransparent()) { p2.accent = activeColour; p2.accentInk = Colours::white; }
-        draw::button (g, b, p2, jmin (b.getHeight(), b.getWidth()) * radiusScale, press, active, hover);
+        draw::button (g, b, p2, jmin (b.getHeight(), b.getWidth()) * shapedRadius (pal, radiusScale), press, active, hover);
         content = b.withTrimmedBottom (2.5f).translated (0.0f, 2.5f * press);
         if (active) col = p2.accentInk;
         else if (! iconColour.isTransparent()) col = iconColour;
         if (flash > 0.01f)
         {
             g.setColour ((active ? Colours::white : p2.accent).withAlpha (0.55f * flash));
-            g.drawRoundedRectangle (content.reduced (2.0f), jmin (b.getHeight(), b.getWidth()) * radiusScale * 0.85f, 2.5f);
+            g.drawRoundedRectangle (content.reduced (2.0f), jmin (b.getHeight(), b.getWidth()) * shapedRadius (pal, radiusScale) * 0.85f, 2.5f);
         }
     }
     else
     {
-        const float rad = jmin (b.getWidth(), b.getHeight()) * 0.3f;
+        const float rad = jmin (b.getWidth(), b.getHeight()) * shapedRadius (pal, 0.3f);
         if (active && ! lightOnDark)
         {
             // Prendido: como una tecla iluminada dentro de la bandeja
@@ -784,33 +950,26 @@ void FieldButton::mouseUp (const MouseEvent& e)
 
 void FieldButton::paint (Graphics& g)
 {
+    // Minimalista: una bandeja hundida como las de los botones, sin lucecitas
     const auto& pal = ctx.vis.pal;
-    auto b = getLocalBounds().toFloat().reduced (1.0f);
-    draw::button (g, b, pal, 12.0f * k, press, false);
-    auto inner = b.withTrimmedBottom (2.5f).translated (0.0f, 2.5f * press).reduced (12.0f * k, 5.0f * k);
+    auto b = getLocalBounds().toFloat().reduced (1.0f, 2.0f);
+    const int bs = pal.pieces.btnShape;
+    const float rad = bs == 1 ? b.getHeight() * 0.5f : (bs == 2 ? 3.0f * k : b.getHeight() * 0.32f);
+    draw::recess (g, b, pal, rad, (pal.night ? pal.body1.darker (0.3f) : pal.body1.darker (0.06f)).interpolatedWith (pal.text, 0.04f * press));
+    if (isMouseOver())
+    {
+        g.setColour (pal.text.withAlpha (0.05f));
+        g.fillRoundedRectangle (b, rad);
+    }
+    auto inner = b.reduced (12.0f * k + (bs == 1 ? 4.0f * k : 0.0f), 4.0f * k).translated (0.0f, press);
     auto chev = inner.removeFromRight (14.0f * k);
-    draw::icon (g, "chev", chev.withSizeKeepingCentre (16.0f * k, 16.0f * k), pal.btnText.withAlpha (0.6f), 1.8f);
+    draw::icon (g, "chev", chev.withSizeKeepingCentre (14.0f * k, 14.0f * k), pal.text.withAlpha (0.45f), 1.6f);
 
     auto labelRow = inner.removeFromTop (inner.getHeight() * 0.42f);
-    g.setColour (pal.btnText.withAlpha (0.58f));
-    g.setFont (ctx.fonts.ui (13.5f * k, 1));
+    g.setColour (led == 2 ? pal.accent : pal.text.withAlpha (0.5f));
+    g.setFont (ctx.fonts.ui (12.5f * k, 1));
     g.drawText (text, labelRow, Justification::bottomLeft, false);
-
-    if (led >= 0)
-    {
-        auto lr = inner.removeFromLeft (15.0f * k);
-        const auto c = Point<float> (lr.getX() + 4.5f * k, inner.getCentreY());
-        const auto col = led == 2 ? pal.accent : (led == 1 ? Colour (0xff3fd17a) : pal.dim.withAlpha (0.4f));
-        if (led > 0)
-        {
-            ColourGradient glow (col.withAlpha (0.55f), c.x, c.y, col.withAlpha (0.0f), c.x + 9.0f * k, c.y, true);
-            g.setGradientFill (glow);
-            g.fillEllipse (c.x - 9.0f * k, c.y - 9.0f * k, 18.0f * k, 18.0f * k);
-        }
-        g.setColour (col);
-        g.fillEllipse (c.x - 4.0f * k, c.y - 4.0f * k, 8.0f * k, 8.0f * k);
-    }
-    g.setColour (pal.btnText);
+    g.setColour (pal.text);
     g.setFont (draw::fitUi (ctx.fonts, value, 15.0f * k, inner.getWidth(), 2));
     g.drawText (value, inner, Justification::centredLeft, true);
 }
@@ -839,20 +998,19 @@ RailBar::RailBar (UiContext& c)
         btn->framed = false;
     recBtn.activeColour = Colour (0xffe5383b);
     recBtn.iconColour = Colour (0xffe5383b);
-    midi.setLed (0);
 }
 
 void RailBar::paint (Graphics& g)
 {
     const auto& pal = ctx.vis.pal;
     for (auto& t : trays)
-        draw::recess (g, t, pal, t.getHeight() * 0.32f, pal.night ? pal.body1.darker (0.3f) : pal.body1.darker (0.06f));
+        draw::recess (g, t, pal, t.getHeight() * shapedRadius (pal, 0.32f), pal.night ? pal.body1.darker (0.3f) : pal.body1.darker (0.06f));
     auto logo = logoArea;
     const float s = jmin (logo.getHeight(), 46.0f * k);
     draw::catLogo (g, logo.removeFromLeft (s).withSizeKeepingCentre (s, s), pal.text, pal.accent);
     g.setColour (pal.text);
     g.setFont (ctx.fonts.ui (26.0f * k, 2));
-    g.drawText ("Midi Cat", logo.withTrimmedLeft (10.0f * k), Justification::centredLeft, false);
+    g.drawText ("MidiCat", logo.withTrimmedLeft (10.0f * k), Justification::centredLeft, false);
 }
 
 void RailBar::resized()
@@ -883,14 +1041,15 @@ void RailBar::resized()
 
     for (auto* f : { &midi, &key, &scale, &latency }) f->k = k;
     const bool show = ! ctx.vis.hideParams;
-    for (auto* c : std::initializer_list<Component*> { &midi, &key, &scale, &latency, &dayBtn, &colourBtn, &transpBtn, &splitBtn, &windowsBtn })
+    for (auto* c : std::initializer_list<Component*> { &midi, &key, &scale, &dayBtn, &colourBtn, &transpBtn, &splitBtn, &windowsBtn })
         c->setVisible (show);
+    latency.setVisible (false);   // la latencia vive en el menú (☰)
     resetBtn.setVisible (showReset);
 
     tray ({ { &hideBtn, bh }, { &menuBtn, bh } });
 
     // "Restablecer" con texto si cabe; si no, solo el ícono
-    const float fieldsWant = (172.0f + 150.0f + 146.0f + 96.0f) * k + 4.0f * (float) gap;
+    const float fieldsWant = (190.0f + 156.0f + 170.0f) * k + 3.0f * (float) gap;
     const float iconsWant = 7.0f * (float) (bh + inner) + 3.0f * (float) (pad * 2 + trayGap);
     const bool roomForText = ! show || (float) b.getWidth() - iconsWant - 132.0f * k >= fieldsWant * 0.9f;
     resetBtn.setLabel (roomForText ? U8 ("Restablecer") : String());
@@ -914,10 +1073,9 @@ void RailBar::resized()
         b.removeFromRight (roundToInt (2.0f * k));
         const int avail = b.getWidth();
         const float f = jlimit (0.3f, 1.0f, (float) avail / fieldsWant);
-        place (midi, roundToInt (172.0f * k * f));
-        place (key, roundToInt (150.0f * k * f));
-        place (scale, roundToInt (146.0f * k * f));
-        place (latency, roundToInt (96.0f * k * f));
+        place (midi, roundToInt (190.0f * k * f));
+        place (key, roundToInt (156.0f * k * f));
+        place (scale, roundToInt (170.0f * k * f));
     }
     repaint();
 }
@@ -960,6 +1118,22 @@ void Popover::resized()
     int y = anchor.getBottom() + 10;
     if (y + sh > area.getBottom()) y = anchor.getY() - 10 - sh;
     y = jlimit (area.getY(), area.getBottom() - sh, y);
+    if (! avoid.isEmpty())
+    {
+        // Que no tape la pieza que estás editando: se prueba en las esquinas y se queda donde tape menos
+        int bestOverlap = std::numeric_limits<int>::max();
+        for (auto pos : { Point<int> (area.getX(), area.getY()), Point<int> (area.getRight() - sw, area.getY()),
+                          Point<int> (area.getX(), area.getBottom() - sh), Point<int> (area.getRight() - sw, area.getBottom() - sh),
+                          Point<int> (area.getCentreX() - sw / 2, area.getBottom() - sh), Point<int> (area.getCentreX() - sw / 2, area.getY()) })
+        {
+            const auto cand = Rectangle<int> (pos.x, pos.y, sw, sh);
+            const auto inter = cand.getIntersection (avoid);
+            const int overlap = inter.getWidth() * inter.getHeight();
+            if (overlap < bestOverlap) { bestOverlap = overlap; x = pos.x; y = pos.y; }
+        }
+    }
+    x = jlimit (area.getX(), area.getRight() - sw, x + userOffset.x);
+    y = jlimit (area.getY(), area.getBottom() - sh, y + userOffset.y);
     panel = { x, y, sw, sh };
 
     content->setTransform (AffineTransform::scale (scale).translated ((float) x + (float) pad * scale, (float) y + (float) head * scale));
@@ -971,7 +1145,7 @@ void Popover::resized()
 void Popover::paint (Graphics& g)
 {
     const auto& pal = ctx.vis.pal;
-    g.setColour (Colours::black.withAlpha (pal.night ? 0.35f : 0.16f));
+    g.setColour (Colours::black.withAlpha ((pal.night ? 0.35f : 0.16f) * dimAmount));
     g.fillAll();
 
     auto p = panel.toFloat();
@@ -998,7 +1172,31 @@ void Popover::paint (Graphics& g)
 void Popover::mouseDown (const MouseEvent& e)
 {
     if (! panel.contains (e.getPosition()))
+    {
         requestClose();
+        return;
+    }
+    // Arrastrar desde el título mueve el panel (para ver lo que está atrás)
+    const float scale = (float) panel.getWidth() / (float) jmax (1, content->getWidth() + 36);
+    draggingPanel = e.y < panel.getY() + roundToInt (50.0f * scale);
+    dragStartOffset = userOffset;
+}
+
+void Popover::mouseDrag (const MouseEvent& e)
+{
+    if (! draggingPanel) return;
+    userOffset = dragStartOffset + e.getOffsetFromDragStart();
+    resized();
+    repaint();
+}
+
+void Popover::mouseUp (const MouseEvent&) { draggingPanel = false; }
+
+void Popover::mouseMove (const MouseEvent& e)
+{
+    const float scale = (float) panel.getWidth() / (float) jmax (1, content->getWidth() + 36);
+    const bool head = panel.contains (e.getPosition()) && e.y < panel.getY() + roundToInt (50.0f * scale);
+    setMouseCursor (head ? MouseCursor::DraggingHandCursor : MouseCursor::NormalCursor);
 }
 
 bool Popover::keyPressed (const KeyPress& k)
@@ -1446,7 +1644,7 @@ void LatencyPanel::paint (Graphics& g)
     const auto& pal = ctx.vis.pal;
     g.setColour (pal.text);
     g.setFont (ctx.fonts.ui (14.5f, 0));
-    g.drawFittedText (U8 ("Si Midi Cat suena o se enciende antes que el otro instrumento con el que lo agrupas, "
+    g.drawFittedText (U8 ("Si MidiCat suena o se enciende antes que el otro instrumento con el que lo agrupas, "
                           "súbele hasta que vayan juntos. Retrasa el MIDI (sonido y luces) sin cambiar nada más."),
                       Rectangle<int> (0, 0, getWidth(), 66), Justification::topLeft, 3);
     if (standalone)

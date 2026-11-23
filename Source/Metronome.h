@@ -7,7 +7,7 @@
 struct MetronomeSettings
 {
     std::atomic<bool> on { false };
-    std::atomic<float> bpm { 100.0f };      // el de Midi Cat (en la app o si el DAW no da tempo)
+    std::atomic<float> bpm { 100.0f };      // el de MidiCat (en la app o si el DAW no da tempo)
     std::atomic<int> beats { 4 };           // tiempos por compás
     std::atomic<int> sound { 0 };
     std::atomic<float> volumeDb { -8.0f };

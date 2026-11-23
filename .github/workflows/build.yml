@@ -1,4 +1,4 @@
-name: Compilar Midi Cat
+name: Compilar MidiCat
 
 on:
   push:
@@ -27,22 +27,22 @@ jobs:
         run: |
           ART=build/MidiCat_artefacts/Release
           ls -la "$ART" "$ART/VST3" "$ART/AU" "$ART/Standalone"
-          codesign --force --deep --sign - "$ART/VST3/Midi Cat.vst3"
-          codesign --force --deep --sign - "$ART/AU/Midi Cat.component"
-          codesign --force --deep --sign - "$ART/Standalone/Midi Cat.app"
-          lipo -info "$ART/VST3/Midi Cat.vst3/Contents/MacOS/Midi Cat"
+          codesign --force --deep --sign - "$ART/VST3/MidiCat.vst3"
+          codesign --force --deep --sign - "$ART/AU/MidiCat.component"
+          codesign --force --deep --sign - "$ART/Standalone/MidiCat.app"
+          lipo -info "$ART/VST3/MidiCat.vst3/Contents/MacOS/MidiCat"
 
       - name: Probar con pluginval
         run: |
           curl -sSL -o pluginval.zip https://github.com/Tracktion/pluginval/releases/latest/download/pluginval_macOS.zip
           unzip -q pluginval.zip
           ./pluginval.app/Contents/MacOS/pluginval --strictness-level 5 --skip-gui-tests --validate-in-process \
-            --timeout-ms 300000 --validate "build/MidiCat_artefacts/Release/VST3/Midi Cat.vst3"
+            --timeout-ms 300000 --validate "build/MidiCat_artefacts/Release/VST3/MidiCat.vst3"
 
       - name: Probar Audio Unit (auval)
         run: |
           mkdir -p ~/Library/Audio/Plug-Ins/Components
-          cp -R "build/MidiCat_artefacts/Release/AU/Midi Cat.component" ~/Library/Audio/Plug-Ins/Components/
+          cp -R "build/MidiCat_artefacts/Release/AU/MidiCat.component" ~/Library/Audio/Plug-Ins/Components/
           killall -9 AudioComponentRegistrar || true
           sleep 2
           auval -v aumu Msky Jocn
@@ -51,7 +51,7 @@ jobs:
         run: |
           ART=build/MidiCat_artefacts/Release
           mkdir -p dist/MidiCat-Mac
-          cp -R "$ART/VST3/Midi Cat.vst3" "$ART/AU/Midi Cat.component" "$ART/Standalone/Midi Cat.app" dist/MidiCat-Mac/
+          cp -R "$ART/VST3/MidiCat.vst3" "$ART/AU/MidiCat.component" "$ART/Standalone/MidiCat.app" dist/MidiCat-Mac/
           cp packaging/LEEME-Mac.txt dist/MidiCat-Mac/LEEME.txt
           cd dist && ditto -c -k --sequesterRsrc --keepParent MidiCat-Mac MidiCat-Mac.zip
 
@@ -60,16 +60,16 @@ jobs:
           ART=build/MidiCat_artefacts/Release
           ROOT=pkgroot
           mkdir -p "$ROOT/Library/Audio/Plug-Ins/VST3" "$ROOT/Library/Audio/Plug-Ins/Components" "$ROOT/Applications"
-          cp -R "$ART/VST3/Midi Cat.vst3" "$ROOT/Library/Audio/Plug-Ins/VST3/"
-          cp -R "$ART/AU/Midi Cat.component" "$ROOT/Library/Audio/Plug-Ins/Components/"
-          cp -R "$ART/Standalone/Midi Cat.app" "$ROOT/Applications/"
+          cp -R "$ART/VST3/MidiCat.vst3" "$ROOT/Library/Audio/Plug-Ins/VST3/"
+          cp -R "$ART/AU/MidiCat.component" "$ROOT/Library/Audio/Plug-Ins/Components/"
+          cp -R "$ART/Standalone/MidiCat.app" "$ROOT/Applications/"
           chmod +x packaging/mac/scripts/preinstall
           pkgbuild --analyze --root "$ROOT" comp.plist
           plutil -convert xml1 comp.plist
           sed -i '' -e '/<key>BundleIsRelocatable<\/key>/{n;s/<true\/>/<false\/>/;}' comp.plist
           grep -A1 BundleIsRelocatable comp.plist || true
           pkgbuild --root "$ROOT" --component-plist comp.plist --scripts packaging/mac/scripts \
-            --identifier com.joeyocn.midicat --version 1.3.2 --install-location / dist/MidiCat-Instalador-Mac.pkg
+            --identifier com.joeyocn.midicat --version 1.4.0 --install-location / dist/MidiCat-Instalador-Mac.pkg
           ls -la dist
 
       - uses: actions/upload-artifact@v4
@@ -98,7 +98,7 @@ jobs:
           Get-ChildItem -Recurse -Depth 1 build\MidiCat_artefacts\Release
           Invoke-WebRequest -Uri https://github.com/Tracktion/pluginval/releases/latest/download/pluginval_Windows.zip -OutFile pluginval.zip
           Expand-Archive pluginval.zip -DestinationPath pluginval
-          $p = Start-Process -FilePath .\pluginval\pluginval.exe -ArgumentList '--strictness-level','5','--skip-gui-tests','--validate-in-process','--timeout-ms','300000','--validate','"build\MidiCat_artefacts\Release\VST3\Midi Cat.vst3"' -NoNewWindow -Wait -PassThru
+          $p = Start-Process -FilePath .\pluginval\pluginval.exe -ArgumentList '--strictness-level','5','--skip-gui-tests','--validate-in-process','--timeout-ms','300000','--validate','"build\MidiCat_artefacts\Release\VST3\MidiCat.vst3"' -NoNewWindow -Wait -PassThru
           if ($p.ExitCode -ne 0) { exit $p.ExitCode }
 
       - name: Empaquetar
@@ -106,8 +106,8 @@ jobs:
         run: |
           $art = "build\MidiCat_artefacts\Release"
           New-Item -ItemType Directory -Force -Path dist\MidiCat-Windows | Out-Null
-          Copy-Item -Recurse "$art\VST3\Midi Cat.vst3" dist\MidiCat-Windows\
-          Copy-Item "$art\Standalone\Midi Cat.exe" dist\MidiCat-Windows\
+          Copy-Item -Recurse "$art\VST3\MidiCat.vst3" dist\MidiCat-Windows\
+          Copy-Item "$art\Standalone\MidiCat.exe" dist\MidiCat-Windows\
           Copy-Item packaging\LEEME-Windows.txt dist\MidiCat-Windows\LEEME.txt
           Compress-Archive -Path dist\MidiCat-Windows -DestinationPath dist\MidiCat-Windows.zip
 
@@ -145,5 +145,5 @@ jobs:
           gh release delete ultima-version --yes --cleanup-tag -R "${{ github.repository }}" || true
           gh release create ultima-version dist/MidiCat-Instalador-Windows.exe dist/MidiCat-Instalador-Mac.pkg dist/MidiCat-Mac.zip dist/MidiCat-Windows.zip \
             -R "${{ github.repository }}" --target "${{ github.sha }}" \
-            --title "Midi Cat · última versión" \
+            --title "MidiCat · última versión" \
             --notes "Lo más fácil: descarga el instalador. Windows: MidiCat-Instalador-Windows.exe. Mac: MidiCat-Instalador-Mac.pkg. Ábrelo, dale Siguiente y listo; al abrir Ableton, Midi Cat ya aparece en tus plugins (y quita solo la versión vieja que se llamaba MidiSky). Los .zip son la versión para copiar a mano."

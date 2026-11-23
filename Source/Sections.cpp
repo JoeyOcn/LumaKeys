@@ -1,4 +1,5 @@
 #include "Sections.h"
+#include "Pieces.h"
 
 using namespace juce;
 
@@ -66,18 +67,37 @@ void ScoreSection::paintContent (Graphics& g, Rectangle<float> area)
     const auto& pal = v.pal;
     const bool tm = transparentMode();
     auto paper = area.reduced (2.0f * k, 2.0f * k).withTrimmedBottom (4.0f * k);
-    Colour ink = pal.ink;
+    const auto st = pieces::staffLook (pal);
+    Colour ink = st.ink;
+    Colour dimInk = st.dim;
     if (tm)
     {
         g.setColour (Colours::black.withAlpha (0.32f));
         g.fillRoundedRectangle (paper, 18.0f * k);
         ink = Colours::white;
+        dimInk = Colours::white.withAlpha (0.85f);
     }
-    else
+    else if (! st.none)
     {
-        draw::card (g, paper, pal, 18.0f * k);
+        static const int frameKind[4] = { 0, 1, 5, 4 };
+        const int fk = frameKind[jlimit (0, 3, pal.pieces.stfShape)];
+        const auto frame = draw::shapePath (paper, fk, 18.0f * k);
+        if (st.card)
+        {
+            Skin p2 = pal;
+            p2.card = st.paper;
+            if (fk == 0) draw::card (g, paper, p2, 18.0f * k);
+            else         draw::cardShape (g, frame, p2);
+        }
+        else if (fk == 0)
+            draw::recess (g, paper, pal, 18.0f * k, st.paper);
+        else
+            draw::recessShape (g, frame, pal, st.paper);
+        if (st.texture != pieces::texNone)
+            pieces::texture (g, draw::shapePath (paper.reduced (1.0f), fk, 18.0f * k), st.texture, st.paper.getPerceivedBrightness() < 0.5f, 1.0f);
     }
-    caption (g, paper, "Pentagrama", tm ? Colours::white : pal.text);
+    caption (g, paper, "Pentagrama", tm ? Colours::white : (st.none ? pal.text : ink));
+    const float staffGlow = tm ? 0.0f : st.glow;
 
     String sigText;
     if (v.sig.count == 0)
@@ -93,7 +113,7 @@ void ScoreSection::paintContent (Graphics& g, Rectangle<float> area)
                                                                     : (v.sig.count == 1 ? U8 (" sostenido") : U8 (" sostenidos")))
                   + " (" + nm.joinIntoString (" ") + ")";
     }
-    g.setColour (tm ? Colours::white.withAlpha (0.85f) : pal.dim);
+    g.setColour (st.none && ! tm ? pal.dim : dimInk);
     g.setFont (draw::fitUi (ctx.fonts, sigText, 15.0f * k, paper.getWidth() - 36.0f * k, 1));
     g.drawText (sigText, paper.reduced (18.0f * k, 12.0f * k).removeFromBottom (18.0f * k), Justification::centredLeft, true);
 
@@ -109,6 +129,16 @@ void ScoreSection::paintContent (Graphics& g, Rectangle<float> area)
     const float left = staffArea.getX() + sp * 1.4f;
     const float right = staffArea.getRight() - sp * 0.2f;
 
+    if (staffGlow > 0.0f)
+    {
+        // Neón: las líneas brillan
+        for (float w : { lineW * 7.0f, lineW * 3.5f })
+        {
+            g.setColour (ink.withAlpha (0.10f * staffGlow));
+            for (int d : { 30, 32, 34, 36, 38 }) g.fillRoundedRectangle (left, yT (d) - w * 0.5f, right - left, w, w * 0.5f);
+            for (int d : { 18, 20, 22, 24, 26 }) g.fillRoundedRectangle (left, yB (d) - w * 0.5f, right - left, w, w * 0.5f);
+        }
+    }
     g.setColour (ink.withAlpha (0.8f));
     for (int d : { 30, 32, 34, 36, 38 }) g.fillRect (left, yT (d) - lineW * 0.5f, right - left, lineW);
     for (int d : { 18, 20, 22, 24, 26 }) g.fillRect (left, yB (d) - lineW * 0.5f, right - left, lineW);
@@ -291,6 +321,10 @@ void ScreenSection::paintContent (Graphics& g, Rectangle<float> area)
         leftSub = U8 ("Prueba quitando una nota");
     }
 
+    const auto sl = pieces::screenLook (pal);
+    const int fontId = sl.font;
+    const int scrShape = tm ? 0 : pal.pieces.scrShape;
+    auto bigFont = [&] (float h) { return fontId == 0 ? (pal.pixelScreen ? ctx.fonts.pixel (h) : ctx.fonts.ui (h, 2)) : ctx.fonts.display (fontId, pal.pixelScreen, h); };
     Rectangle<float> scr;
     if (tm)
     {
@@ -300,20 +334,32 @@ void ScreenSection::paintContent (Graphics& g, Rectangle<float> area)
     }
     else
     {
-        draw::screen (g, area, pal, k);
+        Skin p2 = pal;
+        p2.screen = sl.bg;
+        draw::screen (g, area, p2, k, scrShape);
         scr = area.reduced (8.0f * k);
+        if (sl.texture != pieces::texNone)
+            pieces::texture (g, draw::shapePath (scr, scrShape, 14.0f * k), sl.texture, ! sl.light, 1.0f);
     }
-    const auto textCol = tm ? Colours::white : pal.scrText;
-    const auto dimCol  = tm ? Colours::white.withAlpha (0.8f) : pal.scrDim;
-    auto in = scr.reduced (18.0f * k, 14.0f * k);
+    const auto textCol = tm ? Colours::white : sl.text;
+    const auto dimCol  = tm ? Colours::white.withAlpha (0.8f) : sl.dim;
+    // Con forma de pastilla u óvalo, lo de adentro se mete para no salirse de la orilla
+    auto in = scrShape == 3 ? scr.reduced (scr.getWidth() * 0.13f, scr.getHeight() * 0.12f)
+            : scrShape == 2 ? scr.reduced (jmin (scr.getHeight() * 0.32f, scr.getWidth() * 0.2f), 14.0f * k)
+                            : scr.reduced (18.0f * k, 14.0f * k);
+    const float glowAmt = tm ? 0.0f : sl.glow;
 
     // Esquina: el grado
     {
         auto l = in;
         g.setFont (ctx.fonts.ui (15.5f * k, 1));
         draw::shadowText (g, leftTop, l.removeFromTop (20.0f * k), Justification::centredLeft, dimCol, tm);
-        g.setFont (pal.pixelScreen ? ctx.fonts.pixel (32.0f * k) : ctx.fonts.ui (30.0f * k, 2));
-        draw::shadowText (g, leftBig, l.removeFromTop (38.0f * k), Justification::centredLeft, textCol, tm);
+        const auto lf = fontId == 0 ? (pal.pixelScreen ? ctx.fonts.pixel (32.0f * k) : ctx.fonts.ui (30.0f * k, 2)) : bigFont (28.0f * k);
+        const auto lt = Fonts::displayText (fontId, leftBig);
+        auto lr = l.removeFromTop (38.0f * k);
+        if (glowAmt > 0.0f) glowSmall.draw (g, lt, lf, lr, Justification::centredLeft, textCol, glowAmt);
+        g.setFont (lf);
+        draw::shadowText (g, lt, lr, Justification::centredLeft, textCol, tm);
         g.setFont (ctx.fonts.ui (15.0f * k, 1));
         draw::shadowText (g, leftSub, l.removeFromTop (20.0f * k), Justification::centredLeft, dimCol, tm);
     }
@@ -365,43 +411,80 @@ void ScreenSection::paintContent (Graphics& g, Rectangle<float> area)
     const float cornerBottom = in.getY() + 80.0f * k;
     auto fitBig = [&] (const String& text, Rectangle<float> box, float maxH, float sidePad)
     {
-        Font f = pal.pixelScreen ? ctx.fonts.pixel (maxH) : ctx.fonts.ui (maxH, 2);
+        Font f = bigFont (maxH);
         float h = maxH;
         while (h > 12.0f && draw::textWidth (f, text) > box.getWidth() - sidePad)
         {
             h *= 0.92f;
-            f = pal.pixelScreen ? ctx.fonts.pixel (h) : ctx.fonts.ui (h, 2);
+            f = bigFont (h);
         }
         return f;
     };
+    const auto bigNow = Fonts::displayText (fontId, v.bigText), bigPrev = Fonts::displayText (fontId, v.prevBigText);
     bool dropBelow = false;
     {
-        const auto f0 = fitBig (v.bigText, centre, bigMax, 150.0f * k);
+        const auto f0 = fitBig (bigNow, centre, bigMax, 150.0f * k);
         const auto box = centre.translated (60.0f * k, 0.0f).withTrimmedRight (60.0f * k);
-        const float tw = draw::textWidth (f0, v.bigText);
+        const float tw = draw::textWidth (f0, bigNow);
         const float textLeft = box.getCentreX() - tw * 0.5f;
         const float textTop = box.getCentreY() - f0.getAscent() * 0.75f;
         dropBelow = textLeft < leftRight && textTop < cornerBottom;
     }
     auto bigBox = dropBelow ? in.withTop (cornerBottom) : centre.translated (60.0f * k, 0.0f).withTrimmedRight (60.0f * k);
     const float bigH = dropBelow ? jmin (bigBox.getHeight() * 1.05f, bigMax) : bigMax;
-    auto drawBig = [&] (const String& text, float alpha, float yOff, float scale)
-    {
-        if (text.isEmpty() || alpha <= 0.01f) return;
-        const auto f = fitBig (text, dropBelow ? bigBox : centre, bigH, dropBelow ? 20.0f * k : 150.0f * k);
-        g.setFont (f.withHeight (f.getHeight() * scale));
-        auto r = bigBox.translated (0.0f, yOff);
-        if (! tm)
-        {
-            g.setColour (textCol.withAlpha (0.12f * alpha));
-            g.drawText (text, r.translated (0.0f, 2.0f), Justification::centred, false);
-        }
-        draw::shadowText (g, text, r, Justification::centred, textCol.withAlpha (alpha), tm);
-    };
     const float f = v.bigFade;
     const float ease = 1.0f - (1.0f - f) * (1.0f - f);
-    drawBig (v.prevBigText, 1.0f - ease, -10.0f * k * ease, 1.0f - 0.06f * ease);
-    drawBig (v.bigText, ease, 10.0f * k * (1.0f - ease), 0.94f + 0.06f * ease);
+    const int motion = pal.pieces.anim ? pal.pieces.scrMotion : 4;
+    auto drawBig = [&] (const String& text, float alpha, float yOff, float scale, int chars)
+    {
+        if (text.isEmpty() || alpha <= 0.01f) return;
+        const auto fnt = fitBig (text, dropBelow ? bigBox : centre, bigH, dropBelow ? 20.0f * k : 150.0f * k);
+        auto r = bigBox.translated (0.0f, yOff);
+        String shown = text;
+        if (chars >= 0)
+        {
+            // Escribir: aparecen las letras una a una (el resto ocupa su lugar sin verse)
+            shown = text.substring (0, chars);
+            const float full = draw::textWidth (fnt, text), part = draw::textWidth (fnt, shown);
+            r = r.withX (r.getCentreX() - full * 0.5f).withWidth (part + 2.0f);
+        }
+        if (glowAmt > 0.0f)
+        {
+            // Las luces laten un poco al cambiar de acorde
+            const float pulse = 1.0f + 0.7f * (1.0f - ease) * (chars >= 0 ? 0.0f : 1.0f);
+            glowBig.draw (g, shown, fnt, r, chars >= 0 ? Justification::centredLeft : Justification::centred,
+                          textCol, glowAmt * alpha * pulse, scale);
+        }
+        g.setFont (fnt.withHeight (fnt.getHeight() * scale));
+        const auto just = chars >= 0 ? Justification::centredLeft : Justification::centred;
+        if (! tm && ! sl.light)
+        {
+            g.setColour (textCol.withAlpha (0.12f * alpha));
+            g.drawText (shown, r.translated (0.0f, 2.0f), just, false);
+        }
+        draw::shadowText (g, shown, r, just, textCol.withAlpha (alpha), tm);
+    };
+    switch (motion)
+    {
+        case 1:   // fundido
+            drawBig (bigPrev, 1.0f - ease, 0.0f, 1.0f, -1);
+            drawBig (bigNow, ease, 0.0f, 1.0f, -1);
+            break;
+        case 2:   // zoom
+            drawBig (bigPrev, 1.0f - ease, 0.0f, 1.0f - 0.2f * ease, -1);
+            drawBig (bigNow, jmin (1.0f, ease * 1.4f), 0.0f, 1.0f + 0.22f * (1.0f - ease), -1);
+            break;
+        case 3:   // escribir
+            drawBig (bigNow, 1.0f, 0.0f, 1.0f, f >= 1.0f ? -1 : jmin (bigNow.length(), (int) std::ceil (f * (float) bigNow.length())));
+            break;
+        case 4:   // quieto
+            drawBig (bigNow, 1.0f, 0.0f, 1.0f, -1);
+            break;
+        default:  // deslizar
+            drawBig (bigPrev, 1.0f - ease, -10.0f * k * ease, 1.0f - 0.06f * ease, -1);
+            drawBig (bigNow, ease, 10.0f * k * (1.0f - ease), 0.94f + 0.06f * ease, -1);
+            break;
+    }
 
     g.setFont (draw::fitUi (ctx.fonts, sub, 15.5f * k, subArea.getWidth(), 1));
     draw::shadowText (g, sub, subArea, Justification::centred, dimCol, tm);
@@ -479,15 +562,8 @@ void DegreesSection::paintContent (Graphics& g, Rectangle<float> area)
         }
         else
         {
-            draw::button (g, r, pal, 12.0f * k, press[(size_t) i], false, i == hover ? 1.0f : 0.0f);
-            if (glow > 0.01f)
-            {
-                auto face = r.withTrimmedBottom (2.5f).translated (0.0f, 2.5f * press[(size_t) i]);
-                g.setColour (pal.accent.withAlpha (glow));
-                g.fillRoundedRectangle (face, 12.0f * k);
-                g.setColour (pal.accent.withAlpha (0.35f * glow));
-                g.drawRoundedRectangle (face.expanded (2.0f), 13.0f * k, 2.0f);
-            }
+            pieces::degreeTile (g, ctx, r, i, d.roman, d.symbol, glow, press[(size_t) i], i == hover ? 1.0f : 0.0f, k, &glowCache);
+            continue;
         }
         auto inner = r.withTrimmedBottom (2.5f).translated (0.0f, 2.5f * press[(size_t) i]);
         const auto textCol = tm ? Colours::white : pal.btnText.interpolatedWith (pal.accentInk, glow);
@@ -503,6 +579,7 @@ void DegreesSection::paintContent (Graphics& g, Rectangle<float> area)
 
 void DegreesSection::mouseDown (const MouseEvent& e)
 {
+    if (e.mods.isPopupMenu()) { if (onSettings) onSettings(); return; }
     if (octArea.contains (e.position))
     {
         // Mitad de arriba sube una octava, mitad de abajo baja
@@ -601,6 +678,10 @@ void CircleSection::paintContent (Graphics& g, Rectangle<float> area)
     auto& v = ctx.vis;
     const auto& pal = v.pal;
     const bool tm = transparentMode();
+    const int cskin = tm ? 0 : pal.pieces.cirSkin;
+    const auto acc = pieces::circleColour (pal);
+    const auto accInk = acc.getPerceivedBrightness() > 0.72f ? Colour (0xff1a1a1a) : Colours::white;
+    const auto regionCol = pal.pieces.cirColour.isTransparent() ? pal.region : acc.withAlpha (pal.night ? 0.16f : 0.12f);
     auto plate = area.reduced (2.0f * k).withTrimmedBottom (4.0f * k);
     if (tm)
     {
@@ -609,9 +690,12 @@ void CircleSection::paintContent (Graphics& g, Rectangle<float> area)
     }
     else
     {
-        draw::recess (g, plate, pal, 18.0f * k, pal.plate);
+        const int ps = pal.pieces.cirShape;
+        const auto plateFill = cskin == 4 ? Colour (0xff0b0818) : pal.plate;
+        if (ps == 0)      draw::recess (g, plate, pal, 18.0f * k, plateFill);
+        else if (ps != 3) draw::recessShape (g, draw::shapePath (plate, ps == 1 ? 1 : 5, 18.0f * k), pal, plateFill);
     }
-    caption (g, plate, title, tm ? Colours::white : pal.text);
+    caption (g, plate, title, tm || cskin == 4 ? Colours::white : pal.text);
 
     auto ringArea = plate.reduced (14.0f * k).withTrimmedTop (34.0f * k);
     radius = jmax (20.0f, jmin (ringArea.getWidth(), ringArea.getHeight()) * 0.5f - 2.0f);
@@ -633,8 +717,21 @@ void CircleSection::paintContent (Graphics& g, Rectangle<float> area)
         p.addPieSegment (c.x - r1, c.y - r1, r1 * 2.0f, r1 * 2.0f, a0, a0 + seg, r0 / r1);
         return p;
     };
-    const auto textCol = tm ? Colours::white : pal.text;
-    const auto dimCol  = tm ? Colours::white.withAlpha (0.75f) : pal.dim;
+    const bool darkDisc = cskin == 3 || cskin == 4;
+    const bool pastelDark = cskin == 2 && pal.night;
+    const auto textCol = tm || darkDisc || pastelDark ? Colours::white : (cskin == 2 ? Colour (0xff1d1d1d) : pal.text);
+    const auto dimCol  = tm || darkDisc || pastelDark ? Colours::white.withAlpha (0.75f) : (cskin == 2 ? Colour (0xff1d1d1d).withAlpha (0.7f) : pal.dim);
+
+    Path disc;
+    disc.addEllipse (c.x - rOut, c.y - rOut, rOut * 2.0f, rOut * 2.0f);
+    if (cskin == 3)
+    {
+        // Vinilo: disco negro con surcos
+        g.setColour (Colours::black.withAlpha (0.3f));
+        g.fillEllipse (c.x - rOut - 2.0f, c.y - rOut + 1.0f, rOut * 2.0f + 4.0f, rOut * 2.0f + 4.0f);
+        g.setColour (Colour (0xff121214));
+        g.fillPath (disc);
+    }
 
     for (int i = 0; i < 12; ++i)
     {
@@ -644,15 +741,50 @@ void CircleSection::paintContent (Graphics& g, Rectangle<float> area)
             const bool minorRing = ring == 1;
             auto p = minorRing ? ringSeg (i, rIn, rMid) : ringSeg (i, rMid, rOut);
             const bool isTonic = (i == tonicIndex && minorRing == tonicMinor);
-            g.setColour (isTonic ? pal.accent : (dist <= 1 ? pal.region : (tm ? Colours::black.withAlpha (0.2f) : pal.ring)));
+            Colour fill;
+            if (isTonic) fill = acc;
+            else if (cskin == 1) fill = dist <= 1 ? regionCol.withMultipliedAlpha (0.7f) : Colours::transparentBlack;
+            else if (cskin == 2)
+            {
+                const float hue = (float) i / 12.0f;
+                fill = Colour::fromHSV (hue, minorRing ? 0.30f : 0.42f, pal.night ? (minorRing ? 0.42f : 0.5f) : (minorRing ? 0.97f : 0.93f), 1.0f);
+                if (dist > 1) fill = fill.withMultipliedSaturation (0.45f).withMultipliedAlpha (0.85f);
+            }
+            else if (cskin == 3) fill = dist <= 1 ? acc.withAlpha (0.20f) : Colours::transparentBlack;
+            else if (cskin == 4) fill = dist <= 1 ? acc.withAlpha (0.12f) : Colours::transparentBlack;
+            else fill = dist <= 1 ? regionCol : (tm ? Colours::black.withAlpha (0.2f) : pal.ring);
+            g.setColour (fill);
             g.fillPath (p);
+            if (cskin == 4 && isTonic)
+            {
+                g.setColour (acc.withAlpha (0.25f));
+                g.strokePath (p, PathStrokeType (7.0f * k));
+            }
             if (i == hoverIndex && minorRing == hoverMinor)
             {
                 g.setColour (textCol.withAlpha (0.12f));
                 g.fillPath (p);
             }
-            g.setColour (tm ? Colours::white.withAlpha (0.3f) : pal.plateLine);
-            g.strokePath (p, PathStrokeType (1.0f));
+            if (cskin == 4)
+            {
+                g.setColour (acc.withAlpha (dist <= 1 ? 0.55f : 0.28f));
+                g.strokePath (p, PathStrokeType (1.1f));
+            }
+            else if (cskin == 3)
+            {
+                g.setColour (Colours::white.withAlpha (0.07f));
+                g.strokePath (p, PathStrokeType (1.0f));
+            }
+            else if (cskin == 1)
+            {
+                g.setColour (pal.text.withAlpha (dist <= 1 ? 0.35f : 0.18f));
+                g.strokePath (p, PathStrokeType (1.0f));
+            }
+            else
+            {
+                g.setColour (tm ? Colours::white.withAlpha (0.3f) : (cskin == 2 ? Colours::black.withAlpha (0.12f) : pal.plateLine));
+                g.strokePath (p, PathStrokeType (1.0f));
+            }
 
             const float ang = (float) i * seg - MathConstants<float>::halfPi;
             const float lr = minorRing ? (rIn + rMid) * 0.5f : (rMid + rOut) * 0.5f;
@@ -663,12 +795,24 @@ void CircleSection::paintContent (Graphics& g, Rectangle<float> area)
             const float fh = minorRing ? jmax (10.5f, radius * 0.098f) : jmax (12.0f, radius * 0.115f);
             g.setFont (ctx.fonts.ui (fh, minorRing ? 1 : 2));
             draw::shadowText (g, name, Rectangle<float> (lp.x - 40.0f, lp.y - fh * 0.62f, 80.0f, fh * 1.24f), Justification::centred,
-                              isTonic ? pal.accentInk : (minorRing ? dimCol : textCol), tm && ! isTonic);
+                              isTonic ? accInk : (minorRing ? dimCol : textCol), tm && ! isTonic);
         }
     }
 
-    // --- Constelación: líneas que rodean la perilla, se dibujan solas y una luz las recorre
+    // Textura del círculo (surcos, metal, grano o puntos)
+    if (! tm)
+    {
+        const int tex = pieces::circleTexture (pal);
+        if (tex != pieces::texNone)
+            pieces::texture (g, disc, tex, darkDisc || pal.night, cskin == 3 ? 1.0f : 0.8f, c, rOut);
+    }
+
+    // --- Constelación: líneas entre las notas que suenan, se dibujan solas y una luz las recorre
     const double t = v.time;
+    const auto& pcs = pal.pieces;
+    const int route = tm ? 0 : pcs.cirRoute;
+    const float lw = tm ? 1.0f : pcs.cirLineW;
+    const float knobR = rIn * (tm ? 1.0f : pcs.cirKnob);
     std::vector<int> idx;
     for (int pc = 0; pc < 12; ++pc)
         if (v.activeMask & (1u << (unsigned) pc)) idx.push_back (circleIndexOfPc (pc));
@@ -684,7 +828,8 @@ void CircleSection::paintContent (Graphics& g, Rectangle<float> area)
         shownMask = circMask;
     }
     std::vector<Point<float>> loop;
-    buildLoop (idx, rn, rIn, loop);
+    if (route == 0) buildLoop (idx, rn, knobR, loop);
+    else            buildStraight (idx, rn, loop);
     if (! loop.empty()) lastLoop = loop;
 
     float lineAlpha = 1.0f;
@@ -696,35 +841,64 @@ void CircleSection::paintContent (Graphics& g, Rectangle<float> area)
     }
     const float drawOn = jlimit (0.0f, 1.0f, (float) (t - changedAt) / 0.38f);
     const float drawEase = 1.0f - (1.0f - drawOn) * (1.0f - drawOn);
-    const auto lineCol = tm ? Colours::white : pal.accent;
+    const auto lineCol = tm ? Colours::white : acc;
+    const bool flow = pcs.cirFlow && pcs.anim;
     animating = false;
 
-    if (path->size() >= 2 && lineAlpha > 0.01f)
+    // Qué tan visible es un punto de la línea (las que "se difuminan" se apagan al acercarse al centro)
+    auto fadeAt = [&] (Point<float> p)
     {
+        if (route != 2) return 1.0f;
+        const float d = p.getDistanceFrom (c) / jmax (1.0f, rn);
+        const float f = jlimit (0.0f, 1.0f, (d - 0.12f) / 0.55f);
+        return f * f * (3.0f - 2.0f * f);
+    };
+
+    auto drawLines = [&]
+    {
+        if (path->size() < 2 || lineAlpha <= 0.01f) return;
         std::vector<float> cum (path->size(), 0.0f);
         for (size_t i = 1; i < path->size(); ++i) cum[i] = cum[i - 1] + (*path)[i].getDistanceFrom ((*path)[i - 1]);
         const float total = cum.back();
         const float limit = loop.empty() ? total : total * drawEase;
-        Path line;
-        line.startNewSubPath ((*path)[0]);
-        for (size_t i = 1; i < path->size() && cum[i - 1] < limit; ++i)
+        const float breathe = flow ? 0.5f + 0.5f * (float) std::sin (t * 2.4) : 0.5f;
+        if (route == 2)
         {
-            if (cum[i] <= limit) line.lineTo ((*path)[i]);
-            else
+            // Se difuminan: tramo por tramo, cada uno con su transparencia
+            for (size_t i = 1; i < path->size() && cum[i - 1] < limit; ++i)
             {
-                const float f = (limit - cum[i - 1]) / jmax (0.001f, cum[i] - cum[i - 1]);
-                line.lineTo ((*path)[i - 1] + ((*path)[i] - (*path)[i - 1]) * f);
+                auto a = (*path)[i - 1], b = (*path)[i];
+                if (cum[i] > limit) b = a + (b - a) * ((limit - cum[i - 1]) / jmax (0.001f, cum[i] - cum[i - 1]));
+                const float fa = fadeAt ((a + b) * 0.5f);
+                if (fa < 0.01f) continue;
+                g.setColour (lineCol.withAlpha ((0.10f + 0.08f * breathe) * lineAlpha * fa));
+                g.drawLine ({ a, b }, 8.0f * k * lw);
+                g.setColour (lineCol.withAlpha (0.95f * lineAlpha * fa));
+                g.drawLine ({ a, b }, 2.2f * k * lw);
             }
         }
-        // Brillo que respira
-        const float breathe = 0.5f + 0.5f * (float) std::sin (t * 2.4);
-        g.setColour (lineCol.withAlpha ((0.10f + 0.08f * breathe) * lineAlpha));
-        g.strokePath (line, PathStrokeType (8.0f * k, PathStrokeType::curved, PathStrokeType::rounded));
-        g.setColour (lineCol.withAlpha (0.95f * lineAlpha));
-        g.strokePath (line, PathStrokeType (2.2f * k, PathStrokeType::curved, PathStrokeType::rounded));
+        else
+        {
+            Path line;
+            line.startNewSubPath ((*path)[0]);
+            for (size_t i = 1; i < path->size() && cum[i - 1] < limit; ++i)
+            {
+                if (cum[i] <= limit) line.lineTo ((*path)[i]);
+                else
+                {
+                    const float f = (limit - cum[i - 1]) / jmax (0.001f, cum[i] - cum[i - 1]);
+                    line.lineTo ((*path)[i - 1] + ((*path)[i] - (*path)[i - 1]) * f);
+                }
+            }
+            // Brillo que respira
+            g.setColour (lineCol.withAlpha ((0.10f + 0.08f * breathe) * lineAlpha));
+            g.strokePath (line, PathStrokeType (8.0f * k * lw, PathStrokeType::curved, PathStrokeType::rounded));
+            g.setColour (lineCol.withAlpha (0.95f * lineAlpha));
+            g.strokePath (line, PathStrokeType (2.2f * k * lw, PathStrokeType::curved, PathStrokeType::rounded));
+        }
 
         // Luz que recorre las líneas (cometa)
-        if (! loop.empty() && drawOn >= 1.0f && total > 1.0f)
+        if (flow && ! loop.empty() && drawOn >= 1.0f && total > 1.0f)
         {
             auto pointAt = [&] (float d)
             {
@@ -738,46 +912,67 @@ void CircleSection::paintContent (Graphics& g, Rectangle<float> area)
             for (int j = 0; j < 10; ++j)
             {
                 const auto p = pointAt (head - (float) j * 5.0f * k);
-                const float a = (1.0f - (float) j / 10.0f);
-                const float rr = (3.4f - 0.2f * (float) j) * k;
+                const float a = (1.0f - (float) j / 10.0f) * fadeAt (p);
+                const float rr = (3.4f - 0.2f * (float) j) * k * jmax (0.8f, lw);
                 g.setColour (Colours::white.withAlpha (0.85f * a));
                 g.fillEllipse (p.x - rr * 0.5f, p.y - rr * 0.5f, rr, rr);
             }
             // Destellos que viajan en sentido contrario, más suaves
             const auto q = pointAt (total - head * 0.6f);
-            g.setColour (lineCol.brighter (0.6f).withAlpha (0.6f));
+            g.setColour (lineCol.brighter (0.6f).withAlpha (0.6f * fadeAt (q)));
             g.fillEllipse (q.x - 2.0f * k, q.y - 2.0f * k, 4.0f * k, 4.0f * k);
         }
         animating = true;
-    }
+    };
 
-    // --- La perilla del centro: apunta a la tonalidad
+    // Por debajo o rodeando: antes del botón del centro. Encima o difuminadas: después.
+    if (route == 0 || route == 1) drawLines();
+
+    // --- El botón del centro: apunta a la tonalidad
     {
-        Colour cap = tm ? Colours::black.withAlpha (0.6f) : pal.caps[0];
-        if (! tm) draw::knobBody (g, c, rIn, pal, cap);
-        else { g.setColour (cap); g.fillEllipse (c.x - rIn, c.y - rIn, rIn * 2.0f, rIn * 2.0f); }
+        Colour cap = tm ? Colours::black.withAlpha (0.6f) : (cskin == 3 ? acc.darker (0.25f) : (cskin == 4 ? Colour (0xff160f30) : pal.caps[0]));
+        if (! tm) draw::knobBody (g, c, knobR, pal, cap);
+        else { g.setColour (cap); g.fillEllipse (c.x - knobR, c.y - knobR, knobR * 2.0f, knobR * 2.0f); }
+        if (cskin == 4 && ! tm)
+        {
+            g.setColour (acc.withAlpha (0.45f));
+            g.drawEllipse (c.x - knobR, c.y - knobR, knobR * 2.0f, knobR * 2.0f, 1.5f);
+        }
         const float a = v.knobAngle;
-        const auto i0 = c + Point<float> (std::sin (a), -std::cos (a)) * (rIn * 0.80f);
-        const auto i1 = c + Point<float> (std::sin (a), -std::cos (a)) * (rIn * 0.96f);
-        g.setColour (pal.accent);
-        g.drawLine ({ i0, i1 }, jmax (3.0f, rIn * 0.08f));
+        const auto i0 = c + Point<float> (std::sin (a), -std::cos (a)) * (knobR * 0.80f);
+        const auto i1 = c + Point<float> (std::sin (a), -std::cos (a)) * (knobR * 0.96f);
+        g.setColour (cskin == 3 ? Colours::white : acc);
+        g.drawLine ({ i0, i1 }, jmax (2.0f, knobR * 0.08f));
 
         const auto root = theory::pcName (v.keyRoot, v.sig, v.latin);
         const auto scName = String (CharPointer_UTF8 (sc.shortName));
-        g.setColour (Colours::white);
-        g.setFont (ctx.fonts.ui (rIn * 0.5f, 2));
-        g.drawText (root, Rectangle<float> (c.x - rIn, c.y - rIn * 0.62f, rIn * 2.0f, rIn * 0.66f), Justification::centred, false);
-        const String sigTxt = v.sig.count == 0 ? U8 ("sin alteraciones")
-                                               : String (v.sig.count) + (v.sig.flats ? (v.sig.count == 1 ? " bemol" : " bemoles")
-                                                                                     : (v.sig.count == 1 ? " sostenido" : " sostenidos"));
-        g.setColour (Colours::white.withAlpha (0.85f));
-        g.setFont (draw::fitUi (ctx.fonts, scName, rIn * 0.23f, rIn * 1.5f, 1));
-        g.drawText (scName, Rectangle<float> (c.x - rIn, c.y + rIn * 0.06f, rIn * 2.0f, rIn * 0.26f), Justification::centred, false);
-        g.setFont (draw::fitUi (ctx.fonts, sigTxt, rIn * 0.2f, rIn * 1.4f, 0));
-        g.drawText (sigTxt, Rectangle<float> (c.x - rIn, c.y + rIn * 0.32f, rIn * 2.0f, rIn * 0.24f), Justification::centred, false);
+        const auto capInk = cap.getPerceivedBrightness() > 0.7f ? Colour (0xff1a1a1a) : Colours::white;
+        g.setColour (capInk);
+        g.setFont (ctx.fonts.ui (knobR * 0.5f, 2));
+        g.drawText (root, Rectangle<float> (c.x - knobR, c.y - knobR * 0.62f, knobR * 2.0f, knobR * 0.66f), Justification::centred, false);
+        if (knobR > 26.0f)   // con el centro chiquito solo cabe la tónica
+        {
+            const String sigTxt = v.sig.count == 0 ? U8 ("sin alteraciones")
+                                                   : String (v.sig.count) + (v.sig.flats ? (v.sig.count == 1 ? " bemol" : " bemoles")
+                                                                                         : (v.sig.count == 1 ? " sostenido" : " sostenidos"));
+            g.setColour (capInk.withAlpha (0.85f));
+            g.setFont (draw::fitUi (ctx.fonts, scName, knobR * 0.23f, knobR * 1.5f, 1));
+            g.drawText (scName, Rectangle<float> (c.x - knobR, c.y + knobR * 0.06f, knobR * 2.0f, knobR * 0.26f), Justification::centred, false);
+            g.setFont (draw::fitUi (ctx.fonts, sigTxt, knobR * 0.2f, knobR * 1.4f, 0));
+            g.drawText (sigTxt, Rectangle<float> (c.x - knobR, c.y + knobR * 0.32f, knobR * 2.0f, knobR * 0.24f), Justification::centred, false);
+        }
+        else
+        {
+            g.setColour (capInk.withAlpha (0.85f));
+            g.setFont (draw::fitUi (ctx.fonts, scName, knobR * 0.3f, knobR * 1.6f, 1));
+            g.drawText (scName, Rectangle<float> (c.x - knobR, c.y + knobR * 0.08f, knobR * 2.0f, knobR * 0.36f), Justification::centred, false);
+        }
     }
 
+    if (route == 2 || route == 3) drawLines();
+
     // --- Nodos: puntitos de color que laten
+    const int nodes = tm ? 0 : pcs.cirNodes;
     int ni = 0;
     for (int pc = 0; pc < 12; ++pc)
     {
@@ -787,8 +982,19 @@ void CircleSection::paintContent (Graphics& g, Rectangle<float> area)
         const float a = (float) i * seg - MathConstants<float>::halfPi;
         const auto pos = c + Point<float> (std::cos (a), std::sin (a)) * rn;
         const auto col = pal.rainbow ? pal.noteColour (pc) : pal.noteTag (ni++);
-        const float pulse = 1.0f + 0.14f * (float) std::sin (t * 4.0 + (double) i);
-        const float rr = 6.0f * k * (0.6f + 0.4f * gl) * pulse;
+        animating = true;
+        if (nodes == 2) continue;
+        const float pulse = pcs.anim ? 1.0f + 0.14f * (float) std::sin (t * 4.0 + (double) i) : 1.0f;
+        const float rr = 6.0f * k * (0.6f + 0.4f * gl) * pulse * jmax (0.8f, std::sqrt (lw));
+        if (nodes == 1)
+        {
+            // Anillos: solo el contorno, sin brillo
+            g.setColour (col.withMultipliedAlpha (gl));
+            g.drawEllipse (pos.x - rr * 1.2f, pos.y - rr * 1.2f, rr * 2.4f, rr * 2.4f, 2.2f * k);
+            g.setColour (pal.plate.withMultipliedAlpha (gl));
+            g.fillEllipse (pos.x - rr * 0.6f, pos.y - rr * 0.6f, rr * 1.2f, rr * 1.2f);
+            continue;
+        }
         ColourGradient glow (col.withAlpha (0.45f * gl), pos.x, pos.y, col.withAlpha (0.0f), pos.x + rr * 3.2f, pos.y, true);
         g.setGradientFill (glow);
         g.fillEllipse (pos.x - rr * 3.2f, pos.y - rr * 3.2f, rr * 6.4f, rr * 6.4f);
@@ -796,7 +1002,24 @@ void CircleSection::paintContent (Graphics& g, Rectangle<float> area)
         g.fillEllipse (pos.x - rr, pos.y - rr, rr * 2.0f, rr * 2.0f);
         g.setColour (Colours::white.withAlpha (0.9f * gl));
         g.drawEllipse (pos.x - rr, pos.y - rr, rr * 2.0f, rr * 2.0f, 1.5f * k);
-        animating = true;
+    }
+}
+
+// Líneas rectas entre las notas (cruzan el centro); con puntos intermedios para que la luz las recorra
+void CircleSection::buildStraight (const std::vector<int>& idx, float rn, std::vector<Point<float>>& out) const
+{
+    out.clear();
+    if (idx.size() < 2) return;
+    const float seg = MathConstants<float>::twoPi / 12.0f;
+    auto pt = [&] (int i) { const float a = (float) i * seg - MathConstants<float>::halfPi; return centre + Point<float> (std::cos (a), std::sin (a)) * rn; };
+    const size_t n = idx.size();
+    const size_t segs = n == 2 ? 1 : n;
+    for (size_t s = 0; s < segs; ++s)
+    {
+        const auto p0 = pt (idx[s]), p1 = pt (idx[(s + 1) % n]);
+        const int steps = 24;
+        for (int i = (s == 0 ? 0 : 1); i <= steps; ++i)
+            out.push_back (p0 + (p1 - p0) * ((float) i / (float) steps));
     }
 }
 
@@ -833,7 +1056,7 @@ KeyboardSection::KeyboardSection (UiContext& c)
       soundBtn (c, "Sonido"),
       pedalBtn (c, {}, U8 ("Sostiene las notas como el pedal de un piano (sin pedal físico)"), "Pedal"),
       keysColourBtn (c, "keys", "Color y forma de las teclas", "Teclas"),
-      uiColourBtn (c, "palette", "Color de la interfaz", "Interfaz"),
+      uiColourBtn (c, "palette", U8 ("Personaliza todo: estilo, teclas, pantalla, grados, círculo, pentagrama, formas y movimiento"), "Interfaz"),
       leftBtn (c, "left", U8 ("Bajar una octava")), rightBtn (c, "right", U8 ("Subir una octava")),
       oct2 (c, {}, "2 octavas", "2"), oct3 (c, {}, "3 octavas", "3"), oct4 (c, {}, "4 octavas", "4")
 {
@@ -882,9 +1105,9 @@ void KeyboardSection::layoutContent (Rectangle<int> areaI)
         soundBtn.setBounds (Rectangle<float> (L.getX(), L.getY(), L.getWidth(), 48.0f * k).toNearestInt());
         pianoSw.setBounds (Rectangle<float> (L.getX(), L.getY() + 82.0f * k, 54.0f * k, 30.0f * k).toNearestInt());
         volume.setBounds (Rectangle<float> (L.getRight() - 70.0f * k, L.getY() + 58.0f * k, 68.0f * k, 68.0f * k).toNearestInt());
-        const float half = (L.getWidth() - 8.0f * k) * 0.5f;
-        keysColourBtn.setBounds (Rectangle<float> (L.getX(), L.getBottom() - 40.0f * k, half, 40.0f * k).toNearestInt());
-        uiColourBtn.setBounds (Rectangle<float> (L.getRight() - half, L.getBottom() - 40.0f * k, half, 40.0f * k).toNearestInt());
+        // Teclas, colores, formas y movimiento: todo en un solo botón
+        keysColourBtn.setVisible (false);
+        uiColourBtn.setBounds (Rectangle<float> (L.getX(), L.getBottom() - 40.0f * k, L.getWidth(), 40.0f * k).toNearestInt());
 
         auto R = rightCheek;
         const bool det = detachBtn.isVisible();

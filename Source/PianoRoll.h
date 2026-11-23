@@ -1,9 +1,10 @@
 #pragma once
+#include <map>
 
 #include "Views.h"
 
 //==============================================================================
-// Piano roll para editar los .mid de Midi Cat, con los mismos movimientos que Ableton:
+// Piano roll para editar los .mid de MidiCat, con los mismos movimientos que Ableton:
 // flecha por defecto, lápiz con B, doble clic pone o quita notas, las orillas alargan,
 // Alt/Ctrl + arrastrar copia, Cmd/Alt + arrastrar cambia la fuerza, Cmd+D duplica,
 // Cmd+E divide, Cmd+U cuantiza, Cmd+1/2/3/4 cambian la rejilla.
@@ -120,6 +121,11 @@ private:
     bool changed = false, fineDecided = false, fineMode = false;
     juce::Rectangle<float> marqueeRect;
     int drawPitch = -1;
+    int keyRoot = -1, keyScale = 0;   // tonalidad guardada en el archivo
+    std::map<long long, size_t> strokeCells;   // casillas que ya pintó este trazo del lápiz
+    int ghostPitch = -1;                         // dónde caería la nota del lápiz
+    double ghostBeat = 0.0;
+    void mouseExit (const juce::MouseEvent&) override { if (ghostPitch >= 0) { ghostPitch = -1; repaint(); } }
     double rulerAnchorBeat = 0.0;
     float rulerStartPx = 80.0f;
     int previewNote = -1;
@@ -145,16 +151,20 @@ private:
 };
 
 //==============================================================================
-class PianoRollWindow : public juce::DocumentWindow
+class PianoRollWindow : public juce::DocumentWindow, private juce::Timer
 {
 public:
     PianoRollWindow (UiContext& c, juce::MidiKeyboardState& kb, juce::LookAndFeel& lf);
     ~PianoRollWindow() override;
     void open (const juce::File&);
     void closeButtonPressed() override { if (onClose) onClose(); }
+    void activeWindowStatusChanged() override { keepInFront(); }
     std::function<void()> onClose;
     PianoRoll& roll() { return *rollComp; }
 
 private:
+    void timerCallback() override { keepInFront(); }
+    void keepInFront();   // en pantalla completa (o casi), por encima de la ventana del plugin
     PianoRoll* rollComp = nullptr;
+    bool raised = false;
 };

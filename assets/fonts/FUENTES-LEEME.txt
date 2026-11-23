@@ -1,5 +1,8 @@
-Fuentes incluidas en Midi Cat (antes MidiSky) (todas con licencia SIL Open Font License 1.1, ver los archivos *-OFL.txt):
+Fuentes incluidas en MidiCat (antes MidiSky / Midi Cat) (todas con licencia SIL Open Font License 1.1, ver los archivos *-OFL.txt):
 
 - Bravura.otf: subconjunto modificado de Bravura (Steinberg). Al ser una versión modificada se renombró internamente "MidiSky Notes", como pide la licencia por el nombre reservado "Bravura".
 - Jersey10-Regular.ttf: subconjunto de Jersey 10 (Sarah Cadigan-Fried).
 - ZenKakuGothicNew-*.ttf: subconjunto de Zen Kaku Gothic New (Yoshimichi Ohira).
+- Letras de la pantalla (sin modificar, tal como se publican):
+  Doto (The Doto Project Authors), VT323 (The VT323 Project Authors), Orbitron (The Orbitron Project Authors),
+  Monoton (Vernon Adams), Press Start 2P (The Press Start 2P Project Authors), Sixtyfour (The Sixtyfour Project Authors).

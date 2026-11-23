@@ -10,7 +10,7 @@ if(APPLE)
     endif()
 endif()
 
-project(MidiCat VERSION 1.3.2 LANGUAGES C CXX)
+project(MidiCat VERSION 1.4.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -29,7 +29,7 @@ if(APPLE)
 endif()
 
 juce_add_plugin(MidiCat
-    PRODUCT_NAME "Midi Cat"
+    PRODUCT_NAME "MidiCat"
     COMPANY_NAME "Joey Ocn"
     COMPANY_WEBSITE "https://github.com/JoeyOcn"
     BUNDLE_ID "com.joeyocn.midisky"
@@ -40,7 +40,7 @@ juce_add_plugin(MidiCat
     NEEDS_MIDI_INPUT TRUE
     NEEDS_MIDI_OUTPUT FALSE
     IS_MIDI_EFFECT FALSE
-    EDITOR_WANTS_KEYBOARD_FOCUS FALSE
+    EDITOR_WANTS_KEYBOARD_FOCUS TRUE
     COPY_PLUGIN_AFTER_BUILD FALSE
     VST3_CATEGORIES Instrument Tools
     AU_MAIN_TYPE kAudioUnitType_MusicDevice
@@ -64,7 +64,13 @@ target_sources(MidiCat PRIVATE
     Source/Recorder.cpp
     Source/PluginHost.cpp
     Source/Extras.cpp
-    Source/PianoRoll.cpp)
+    Source/PianoRoll.cpp
+    Source/Pieces.cpp
+    Source/InterfaceEditor.cpp)
+
+if(APPLE)
+    target_sources(MidiCat PRIVATE Source/MacWindow.mm)
+endif()
 
 file(GLOB MIDISKY_PIANO_SAMPLES CONFIGURE_DEPENDS
     ${CMAKE_CURRENT_SOURCE_DIR}/assets/piano/*.ogg
@@ -79,7 +85,13 @@ juce_add_binary_data(MidiSkyData
         assets/fonts/ZenKakuGothicNew-Regular.ttf
         assets/fonts/ZenKakuGothicNew-Medium.ttf
         assets/fonts/ZenKakuGothicNew-Bold.ttf
-        assets/fonts/Jersey10-Regular.ttf)
+        assets/fonts/Jersey10-Regular.ttf
+        assets/fonts/Doto-Variable.ttf
+        assets/fonts/VT323-Regular.ttf
+        assets/fonts/Orbitron-Variable.ttf
+        assets/fonts/Monoton-Regular.ttf
+        assets/fonts/PressStart2P-Regular.ttf
+        assets/fonts/Sixtyfour-Variable.ttf)
 
 if(MSVC)
     target_compile_options(MidiCat PRIVATE /utf-8)

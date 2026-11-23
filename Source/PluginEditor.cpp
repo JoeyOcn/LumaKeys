@@ -12,7 +12,7 @@ void MidiSkyLook::setPalette (const Skin& p)
     pal = p;
     const auto menuBg = p.night ? p.body1.brighter (0.08f) : p.body1.brighter (0.02f);
     const auto menuText = p.text;
-    setColour (PopupMenu::backgroundColourId, menuBg.withAlpha (0.99f));   // casi opaco: así las esquinas redondas quedan limpias
+    setColour (PopupMenu::backgroundColourId, menuBg.withAlpha (0.0f));    // transparente: el fondo redondo lo dibuja drawPopupMenuBackground
     setColour (PopupMenu::textColourId, menuText);
     setColour (PopupMenu::headerTextColourId, p.dim);
     setColour (PopupMenu::highlightedBackgroundColourId, p.accent);
@@ -40,11 +40,123 @@ void MidiSkyLook::setPalette (const Skin& p)
 
 void MidiSkyLook::drawPopupMenuBackground (Graphics& g, int width, int height)
 {
+    // Menús con la misma vibra del aparato: cuerpo del estilo, esquinas redondas y un brillo arriba
     const auto r = Rectangle<float> (0.0f, 0.0f, (float) width, (float) height);
-    g.setColour (findColour (PopupMenu::backgroundColourId));
-    g.fillRoundedRectangle (r, 10.0f);
-    g.setColour (pal.edge);
-    g.drawRoundedRectangle (r.reduced (0.5f), 10.0f, 1.0f);
+    const float rad = pal.pieces.btnShape == 2 ? 5.0f : 13.0f;
+    const auto bg = pal.night ? pal.body1.brighter (0.06f) : pal.body1.brighter (0.03f);
+    ColourGradient gr (bg.brighter (pal.night ? 0.05f : 0.02f), 0.0f, 0.0f, bg.darker (pal.night ? 0.08f : 0.03f), 0.0f, (float) height, false);
+    g.setGradientFill (gr);
+    g.fillRoundedRectangle (r, rad);
+    if (pal.texture > 0 || pal.flat)
+    {
+        g.setColour (pal.edge.withAlpha (pal.flat ? 0.9f : 0.5f));
+        g.drawRoundedRectangle (r.reduced (0.75f), rad, pal.flat ? 1.5f : 1.0f);
+    }
+    else
+    {
+        g.setColour (pal.night ? Colours::black.withAlpha (0.6f) : pal.edge);
+        g.drawRoundedRectangle (r.reduced (0.5f), rad, 1.0f);
+        g.setColour (Colours::white.withAlpha (pal.night ? 0.07f : 0.7f));
+        g.drawLine (rad, 1.5f, (float) width - rad, 1.5f, 1.0f);
+    }
+    if (pal.neon)
+    {
+        g.setColour (pal.accent.withAlpha (0.35f));
+        g.drawRoundedRectangle (r.reduced (1.5f), rad - 1.0f, 1.2f);
+    }
+    // Una rayita del color de acento arriba, como la luz del aparato
+    g.setColour (pal.accent.withAlpha (0.85f));
+    g.fillRoundedRectangle (r.getCentreX() - 14.0f, 4.0f, 28.0f, 3.0f, 1.5f);
+}
+
+void MidiSkyLook::drawPopupMenuItem (Graphics& g, const Rectangle<int>& area, bool isSeparator, bool isActive, bool isHighlighted,
+                                     bool isTicked, bool hasSubMenu, const String& text, const String& shortcutKeyText,
+                                     const Drawable*, const Colour* textColour)
+{
+    if (isSeparator)
+    {
+        g.setColour (pal.text.withAlpha (0.09f));
+        g.fillRect (Rectangle<float> ((float) area.getX() + 14.0f, (float) area.getCentreY(), (float) area.getWidth() - 28.0f, 1.0f));
+        return;
+    }
+    auto r = area.toFloat().reduced (5.0f, 1.5f);
+    const float rad = pal.pieces.btnShape == 1 ? r.getHeight() * 0.5f : (pal.pieces.btnShape == 2 ? 3.0f : 8.0f);
+    const bool hi = isHighlighted && isActive;
+    if (hi)
+    {
+        g.setColour (pal.accent);
+        g.fillRoundedRectangle (r, rad);
+    }
+    Colour col = textColour != nullptr ? *textColour : pal.text;
+    if (hi) col = pal.accentInk;
+    if (! isActive) col = col.withAlpha (0.35f);
+
+    auto tickArea = r.removeFromLeft (30.0f);
+    if (isTicked)
+    {
+        const auto c = tickArea.getCentre().translated (2.0f, 0.0f);
+        g.setColour (hi ? pal.accentInk : pal.accent);
+        g.fillEllipse (c.x - 4.5f, c.y - 4.5f, 9.0f, 9.0f);
+    }
+    if (hasSubMenu)
+    {
+        auto ar = r.removeFromRight (22.0f);
+        Graphics::ScopedSaveState ss (g);
+        g.addTransform (AffineTransform::rotation (-MathConstants<float>::halfPi, ar.getCentreX(), ar.getCentreY()));
+        draw::icon (g, "chev", ar.withSizeKeepingCentre (14.0f, 14.0f), col.withAlpha (hi ? 1.0f : 0.55f), 1.6f);
+    }
+    g.setColour (col);
+    g.setFont (fonts.ui (15.0f, isTicked ? 2 : 1));
+    g.drawFittedText (text, r.reduced (2.0f, 0.0f).toNearestInt(), Justification::centredLeft, 1, 0.85f);
+    if (shortcutKeyText.isNotEmpty())
+    {
+        g.setColour (col.withAlpha (0.55f));
+        g.setFont (fonts.ui (13.0f, 1));
+        g.drawText (shortcutKeyText, r.reduced (8.0f, 0.0f), Justification::centredRight, false);
+    }
+}
+
+void MidiSkyLook::drawPopupMenuSectionHeader (Graphics& g, const Rectangle<int>& area, const String& name)
+{
+    g.setColour (pal.dim);
+    g.setFont (fonts.ui (12.5f, 2));
+    g.drawText (name, area.reduced (14, 0), Justification::bottomLeft, true);
+}
+
+void MidiSkyLook::getIdealPopupMenuItemSize (const String& text, bool isSeparator, int standardMenuItemHeight, int& idealWidth, int& idealHeight)
+{
+    if (isSeparator)
+    {
+        idealWidth = 50;
+        idealHeight = 11;
+        return;
+    }
+    idealHeight = jmax (32, standardMenuItemHeight);
+    idealWidth = roundToInt (draw::textWidth (fonts.ui (15.0f, 2), text)) + 30 + 40;
+}
+
+Rectangle<int> MidiSkyLook::getTooltipBounds (const String& tipText, Point<int> screenPos, Rectangle<int> parentArea)
+{
+    const auto f = fonts.ui (14.0f, 1);
+    const int w = jmin (360, roundToInt (draw::textWidth (f, tipText)) + 28);
+    const int lines = jmax (1, (int) std::ceil (draw::textWidth (f, tipText) / 332.0f));
+    const int h = 14 + lines * 20;
+    return Rectangle<int> (screenPos.x > parentArea.getCentreX() ? screenPos.x - (w + 12) : screenPos.x + 24,
+                           screenPos.y > parentArea.getCentreY() ? screenPos.y - (h + 6) : screenPos.y + 12, w, h)
+             .constrainedWithin (parentArea);
+}
+
+void MidiSkyLook::drawTooltip (Graphics& g, const String& text, int width, int height)
+{
+    const auto r = Rectangle<float> (0.0f, 0.0f, (float) width, (float) height);
+    const auto bg = pal.night ? pal.body1.brighter (0.1f) : pal.body1;
+    g.setColour (bg);
+    g.fillRoundedRectangle (r, 9.0f);
+    g.setColour (pal.night ? Colours::black.withAlpha (0.6f) : pal.edge);
+    g.drawRoundedRectangle (r.reduced (0.5f), 9.0f, 1.0f);
+    g.setColour (pal.text);
+    g.setFont (fonts.ui (14.0f, 1));
+    g.drawFittedText (text, r.reduced (14.0f, 7.0f).toNearestInt(), Justification::centredLeft, 4, 0.9f);
 }
 
 void MidiSkyLook::drawCornerResizer (Graphics& g, int w, int h, bool isMouseOver, bool isMouseDragging)
@@ -83,6 +195,7 @@ MidiSkyEditor::MidiSkyEditor (MidiSkyProcessor& p)
 {
     setOpaque (true);
     setLookAndFeel (&look);
+    setWantsKeyboardFocus (true);   // para tocar los grados con las teclas de la compu
 
     addAndMakeVisible (rail);
     for (auto* s : sections()) addAndMakeVisible (s);
@@ -186,8 +299,13 @@ MidiSkyEditor::MidiSkyEditor (MidiSkyProcessor& p)
         prefs->degreeOctave = jlimit (-2, 2, prefs->degreeOctave + d);
         prefs->save (false);
         degrees.setOctave (3 + prefs->degreeOctave);
+        proc.updateDegreeChords (vis.keyRoot, vis.scale, vis.sevenths, prefs->degreeOctave);
+        // La tonalidad va dentro de cada grabación (si es automática y aún no sabe, se calcula al arrastrar)
+        proc.recorder.keyRoot.store (vis.autoKey && ! vis.autoHasData ? -1 : vis.keyRoot);
+        proc.recorder.keyScale.store (vis.scale);
     };
     degrees.setOctave (3 + prefs->degreeOctave);
+    degrees.onSettings = [this] { showDegreeInputPanel(); };
     degrees.onRelease = [this]
     {
         // Suena lo que lo dejes apretado (mínimo un instante, para que se oiga)
@@ -301,6 +419,8 @@ void MidiSkyEditor::applyRange (int startC, int octaves)
 void MidiSkyEditor::refreshPalette()
 {
     vis.pal = prefs->palette();
+    MotionSettings::speed = prefs->pieces.anim ? prefs->pieces.animSpeed : 60.0f;
+    MotionSettings::panels = prefs->pieces.anim && prefs->pieces.panelMotion;
     vis.latin = prefs->latin;
     vis.sevenths = prefs->sevenths;
     look.setPalette (vis.pal);
@@ -454,6 +574,11 @@ void MidiSkyEditor::showPopover (const String& id, const String& title, std::uni
     popover->setBounds (getLocalBounds());
     popover->toFront (true);
     popover->grabKeyboardFocus();
+    if (MotionSettings::panels)
+    {
+        popover->setAlpha (0.0f);
+        Desktop::getInstance().getAnimator().animateComponent (popover.get(), popover->getBounds(), 1.0f, 160, false, 0.0, 1.0);
+    }
 }
 
 void MidiSkyEditor::closePopover()
@@ -473,12 +598,25 @@ PopupMenu::Options MidiSkyEditor::menuOptions (Component& target, int minWidth)
 
 void MidiSkyEditor::showInterfacePanel (Component& anchor)
 {
-    showPopover ("interfaz", "Color de la interfaz", std::make_unique<InterfacePanel> (ctx, *prefs), anchor);
+    Component::SafePointer<MidiSkyEditor> safe (this);
+    auto panel = std::make_unique<CustomizePanel> (ctx, *prefs, [safe]
+    {
+        MessageManager::callAsync ([safe] { if (auto* ed = safe.getComponent()) ed->showDegreeInputPanel(); });
+    });
+    auto* raw = panel.get();
+    showPopover ("interfaz", "Personalizar", std::move (panel), anchor);
+    if (popover != nullptr && popover->anchorId == "interfaz")
+    {
+        popover->dimAmount = 0.12f;   // casi sin oscurecer: los cambios se ven en vivo
+        raw->onTab = [safe] (int tab) { if (auto* ed = safe.getComponent()) ed->avoidForTab (tab); };
+        avoidForTab (raw->currentTab());
+    }
 }
 
 void MidiSkyEditor::showKeysPanel (Component& anchor)
 {
-    showPopover ("teclas", "Teclas: forma y color", std::make_unique<KeysPanel> (ctx, *prefs), anchor);
+    CustomizePanel::setStartTab (1);
+    showInterfacePanel (anchor);
 }
 
 //==============================================================================
@@ -735,6 +873,10 @@ void MidiSkyEditor::updateKeyState (bool& keyChanged)
         vis.sig = theory::keySignature (vis.keyRoot, vis.scale);
         vis.scaleMask = theory::scaleMask (vis.keyRoot, vis.scale);
         vis.diatonic = theory::diatonicChords (vis.keyRoot, vis.scale, vis.sevenths, vis.latin);
+        proc.updateDegreeChords (vis.keyRoot, vis.scale, vis.sevenths, prefs->degreeOctave);
+        // La tonalidad va dentro de cada grabación (si es automática y aún no sabe, se calcula al arrastrar)
+        proc.recorder.keyRoot.store (vis.autoKey && ! vis.autoHasData ? -1 : vis.keyRoot);
+        proc.recorder.keyScale.store (vis.scale);
         rail.key.setValueText (theory::pcName (vis.keyRoot, vis.sig, vis.latin) + (vis.autoKey ? U8 (" (auto)") : String()));
         rail.scale.setValueText (U8 (theory::scales()[(size_t) vis.scale].name));
         lastRoot = vis.keyRoot; lastScale = vis.scale; lastLatin = vis.latin;
@@ -782,10 +924,13 @@ std::vector<int> MidiSkyEditor::chordSetNow (double now)
 void MidiSkyEditor::frame()
 {
     const double now = Time::getMillisecondCounterHiRes();
-    const float dt = jlimit (0.0f, 0.1f, (float) ((now - lastFrame) / 1000.0));
+    const float realDt = jlimit (0.0f, 0.1f, (float) ((now - lastFrame) / 1000.0));
     lastFrame = now;
     vis.time = (now - startTime) / 1000.0;
-    auto smooth = [dt] (float rate) { return 1.0f - std::pow (1.0f - rate, dt * 60.0f); };
+    // Movimiento: velocidad de las animaciones (o sin animaciones: todo llega al instante)
+    const auto& motion = prefs->pieces;
+    const float dt = motion.anim ? jmin (0.25f, realDt * motion.animSpeed) : 1.0f;
+    auto smooth = [dt] (float rate) { return 1.0f - std::pow (1.0f - rate, jmin (60.0f, dt * 60.0f)); };
 
     // Notas nuevas (destellos e historial de tonalidad)
     {
@@ -813,8 +958,10 @@ void MidiSkyEditor::frame()
     }
 
     bool keysAnimating = false;
-    const float up = smooth (0.6f), downRate = smooth (0.16f);
-    const float flashDecay = std::pow (0.02f, dt);
+    const int km = motion.anim ? motion.keyMotion : 1;
+    const float up = smooth (km == 1 ? 1.0f : 0.6f), downRate = smooth (km == 1 ? 0.55f : (km == 2 ? 0.045f : 0.16f));
+    const float flashDecay = std::pow (km == 2 ? 0.12f : 0.02f, dt);
+    const float flashBoost = motion.keyGlow * 0.5f;
     for (size_t n = 0; n < 128; ++n)
     {
         const auto d = proc.notes.down[n].load();
@@ -823,7 +970,7 @@ void MidiSkyEditor::frame()
         if (d == 0 && vis.down[n] > 0) releaseMs[n] = now;
         vis.down[n] = d;
         vis.sus[n] = s;
-        if (d > 0) hist[n % 12] += dt * 1.2f;
+        if (d > 0) hist[n % 12] += realDt * 1.2f;
 
         // Las notas que deja sonando el pedal se van apagando poco a poco (como el sonido)
         float susLevel = 0.0f;
@@ -835,7 +982,7 @@ void MidiSkyEditor::frame()
             if (age < 12.0f) keysAnimating = true;
         }
         const float target = d > 0 ? 0.62f + 0.38f * (float) d / 127.0f : susLevel;
-        const float boosted = jmin (1.0f, target + vis.flash[n] * 0.25f);
+        const float boosted = jmin (1.0f, target + vis.flash[n] * flashBoost);
         float& lv = vis.level[n];
         if (std::abs (boosted - lv) > 0.002f)
         {
@@ -846,7 +993,7 @@ void MidiSkyEditor::frame()
         if (vis.flash[n] > 0.01f) { vis.flash[n] *= flashDecay; keysAnimating = true; }
         else vis.flash[n] = 0.0f;
     }
-    const float histDecay = std::exp (-dt / 30.0f);
+    const float histDecay = std::exp (-realDt / 30.0f);
     for (auto& h : hist) h *= histDecay;
 
     const bool pedal = proc.notes.pedal.load();
@@ -945,7 +1092,8 @@ void MidiSkyEditor::frame()
 
     if (vis.bigFade < 1.0f)
     {
-        vis.bigFade = jmin (1.0f, vis.bigFade + dt / 0.22f);
+        const float dur = motion.scrMotion == 3 ? jlimit (0.22f, 0.6f, 0.07f * (float) vis.bigText.length()) : 0.22f;
+        vis.bigFade = jmin (1.0f, vis.bigFade + dt / dur);
         screen.repaint();
     }
 
@@ -1009,7 +1157,7 @@ void MidiSkyEditor::frame()
         lastLatched = latched;
         lastPedalShown = vis.pedal;
     }
-    updateTransport (dt);
+    updateTransport (realDt);
 }
 
 void MidiSkyEditor::updateTransport (float dt)
@@ -1054,6 +1202,11 @@ void MidiSkyEditor::timerCallback()
     {
         restoredFloats = true;
         restoreFloating();
+        if (isStandalone()) grabKeyboardFocus();
+       #if MIDISKY_DEMO
+        if (demoPopover == "interfaz") CustomizePanel::setStartTab (SystemStats::getEnvironmentVariable ("MIDISKY_TAB", "0").getIntValue());
+        if (demoPopover == "grados") showDegreeInputPanel();
+       #endif
         if (demoPopover == "interfaz") showInterfacePanel (keyboard.uiColourBtn);
         if (demoPopover == "teclas") showKeysPanel (keyboard.keysColourBtn);
     }
@@ -1381,22 +1534,23 @@ void MidiSkyEditor::showMainMenu()
     m.addSubMenu ("Estilo", lookM);
     m.addSubMenu (U8 ("Modo día / noche"), dn);
     m.addSubMenu ("Forma de las teclas", keysM);
-    m.addItem (20, U8 ("Color de la interfaz…"));
-    m.addItem (21, U8 ("Color de las teclas…"));
+    m.addItem (20, U8 ("Personalizar todo (colores, diseños, formas y movimiento)…"));
     m.addSeparator();
     m.addItem (22, U8 ("Metrónomo…"));
     m.addItem (23, U8 ("Grabaciones MIDI…"));
     m.addItem (25, U8 ("Nuevo MIDI en el piano roll…"));
+    m.addItem (27, U8 ("Grados: teclas y pads…"));
     if (proc.host != nullptr) m.addItem (24, U8 ("Tus instrumentos VST3 / AU…"));
     m.addSeparator();
     m.addSubMenu ("Nombres de las notas", names);
     m.addSubMenu ("Acordes de la tonalidad", chordsM);
     m.addSubMenu (U8 ("Tamaño de la ventana"), size);
+    m.addItem (26, U8 ("Latencia…"));
     m.addItem (7, U8 ("Reiniciar detección automática"));
     m.addItem (15, U8 ("Restablecer diseño (todo a su lugar)"));
     m.addSeparator();
     if (isStandalone()) m.addItem (8, U8 ("Audio y MIDI…"));
-    m.addItem (14, "Acerca de Midi Cat");
+    m.addItem (14, "Acerca de MidiCat");
 
     m.showMenuAsync (menuOptions (rail.menuBtn, 260), [this] (int r)
     {
@@ -1417,6 +1571,8 @@ void MidiSkyEditor::showMainMenu()
         else if (r == 23) showRecordingsPanel (rail.recBtn);
         else if (r == 24) showPluginsPanel (keyboard.soundBtn);
         else if (r == 25) newMidiFile();
+        else if (r == 26) showLatencyPanel();
+        else if (r == 27) showDegreeInputPanel();
         else if (r >= 30 && r <= 32) setDayNight (r - 30);
         else if (r >= 40 && r < 40 + (int) looks().size()) { prefs->look = looks()[(size_t) (r - 40)].id; prefs->save(); }
         else if (r >= 60 && r < 64) { prefs->keyStyle = r - 60; prefs->save(); }
@@ -1461,19 +1617,19 @@ void MidiSkyEditor::showLatencyPanel()
         };
     }
    #endif
-    showPopover ("latencia", "Compensar latencia", std::make_unique<LatencyPanel> (ctx, *lat, isStandalone(), info, setBuf), rail.latency);
+    showPopover ("latencia", "Compensar latencia", std::make_unique<LatencyPanel> (ctx, *lat, isStandalone(), info, setBuf), rail.menuBtn);
 }
 
 void MidiSkyEditor::showAbout()
 {
-    const auto text = U8 ("Midi Cat 1.3.2: visualizador de escalas, acordes, notas y pentagrama, con pianos, metrónomo, grabadora MIDI y piano roll.\n\n"
+    const auto text = U8 ("MidiCat 1.4: visualizador de escalas, acordes, notas y pentagrama, con pianos, metrónomo, grabadora MIDI y piano roll.\n\n"
                           "Piano de cola: Salamander Grand Piano de Alexander Holm (CC BY 3.0).\n"
                           "Piano de concierto: Splendid Grand Piano, muestras de dominio público de Akai.\n"
                           "Piano eléctrico: jRhodes3d de Jeff Learman (CC BY 4.0), github.com/sfzinstruments/jlearman.jRhodes3d\n"
                           "Notación: basada en la fuente Bravura de Steinberg (SIL OFL).\n"
-                          "Tipografías: Zen Kaku Gothic New y Jersey 10 (SIL OFL).\n"
+                          "Tipografías: Zen Kaku Gothic New, Jersey 10, Doto, VT323, Orbitron, Monoton, Press Start 2P y Sixtyfour (SIL OFL).\n"
                           "Hecho con JUCE (AGPLv3).");
-    showPopover ("acerca", "Acerca de Midi Cat", std::make_unique<TextPanel> (ctx, text, 520), rail.menuBtn);
+    showPopover ("acerca", "Acerca de MidiCat", std::make_unique<TextPanel> (ctx, text, 520), rail.menuBtn);
 }
 
 //==============================================================================
@@ -1545,11 +1701,11 @@ void MidiSkyEditor::newMidiFile()
     // Un MIDI vacío de 4 compases, con el tempo del metrónomo
     auto dir = MidiRecorder::folder();
     dir.createDirectory();
-    auto file = dir.getNonexistentChildFile ("Midi Cat " + Time::getCurrentTime().formatted ("%Y-%m-%d %H.%M.%S"), ".mid", false);
+    auto file = dir.getNonexistentChildFile ("MidiCat " + Time::getCurrentTime().formatted ("%Y-%m-%d %H.%M.%S"), ".mid", false);
     MidiMessageSequence seq;
     seq.addEvent (MidiMessage::tempoMetaEvent ((int) std::llround (60000000.0 / jmax (20.0f, prefs->metroBpm))), 0.0);
     seq.addEvent (MidiMessage::timeSignatureMetaEvent (prefs->metroBeats, 4), 0.0);
-    seq.addEvent (MidiMessage::textMetaEvent (3, "Midi Cat"), 0.0);
+    MidiRecorder::addKeyInfo (seq, vis.keyRoot, vis.scale);
     MidiFile mf;
     mf.setTicksPerQuarterNote (960);
     mf.addTrack (seq);
@@ -1686,22 +1842,91 @@ void MidiSkyEditor::previewChord (int index, float velocity)
 {
     if (index < 0 || index >= (int) vis.diatonic.size()) return;
     stopPreview();
-    const auto& d = vis.diatonic[(size_t) index];
-    int prev = 48 + 12 * prefs->degreeOctave + d.rootPc;
-    if (prev < 52 + 12 * prefs->degreeOctave) prev += 12;
-    previewNotes.push_back (prev - 12);
-    previewNotes.push_back (prev);
-    for (size_t i = 1; i < d.pcs.size(); ++i)
-    {
-        int n = prev + ((d.pcs[i] - prev % 12 + 12) % 12);
-        if (n == prev) n += 12;
-        previewNotes.push_back (n);
-        prev = n;
-    }
-    for (auto& n : previewNotes) n = jlimit (0, 127, n);
+    previewNotes = proc.degreeChordNotes (index);
     for (auto n : previewNotes) proc.uiKeyboard.noteOn (1, n, velocity);
     previewStartedAt = Time::getMillisecondCounterHiRes();
     previewOffAt = previewStartedAt + 30000.0;   // se apaga al soltar el mouse
+}
+
+//==============================================================================
+// Grados con las teclas de la compu (lo que tocas se oye y se graba; en la interfaz no se ven las teclas)
+//==============================================================================
+static int normalisedKey (const KeyPress& k)
+{
+    int code = k.getKeyCode();
+    if (code >= 'A' && code <= 'Z') code += 'a' - 'A';
+    return code;
+}
+
+bool MidiSkyEditor::keyPressed (const KeyPress& key)
+{
+    if (! prefs->degreeKeysOn || DegreeInputPanel::capturing) return false;
+    const auto mods = key.getModifiers();
+    if (mods.isCommandDown() || mods.isCtrlDown() || mods.isAltDown()) return false;
+    const int code = normalisedKey (key);
+    for (int i = 0; i < 7; ++i)
+        if (code != 0 && prefs->degreeKeys[(size_t) i] == code)
+        {
+            if (! degreeDown[(size_t) i]) startDegree (i);
+            return true;
+        }
+    return false;
+}
+
+bool MidiSkyEditor::keyStateChanged (bool)
+{
+    bool used = false;
+    for (int i = 0; i < 7; ++i)
+        if (degreeDown[(size_t) i] && ! KeyPress::isKeyCurrentlyDown (prefs->degreeKeys[(size_t) i]))
+        {
+            stopDegree (i);
+            used = true;
+        }
+    return used;
+}
+
+void MidiSkyEditor::startDegree (int i)
+{
+    degreeDown[(size_t) i] = true;
+    heldDegree[(size_t) i] = proc.degreeChordNotes (i);
+    for (auto n : heldDegree[(size_t) i])
+        if (degreeRefs[(size_t) n]++ == 0)
+            proc.degreeKeyboard.noteOn (1, n, 0.78f);
+}
+
+void MidiSkyEditor::stopDegree (int i)
+{
+    degreeDown[(size_t) i] = false;
+    for (auto n : heldDegree[(size_t) i])
+        if (degreeRefs[(size_t) n] > 0 && --degreeRefs[(size_t) n] == 0)
+            proc.degreeKeyboard.noteOff (1, n, 0.0f);
+    heldDegree[(size_t) i].clear();
+}
+
+void MidiSkyEditor::showDegreeInputPanel()
+{
+    Component::SafePointer<MidiSkyEditor> safe (this);
+    auto lastPad = [safe]() -> int { return safe != nullptr ? safe->proc.lastNoteEvent.load() : 0; };
+    showPopover ("gradosTeclas", "Teclas y pads para los grados", std::make_unique<DegreeInputPanel> (ctx, *prefs, lastPad), degrees);
+}
+
+void MidiSkyEditor::avoidForTab (int tab)
+{
+    if (popover == nullptr) return;
+    Section* target = nullptr;
+    switch (tab)
+    {
+        case 1: target = &keyboard; break;
+        case 2: target = &screen; break;
+        case 3: target = &degrees; break;
+        case 4: target = &circle; break;
+        case 5: target = &score; break;
+        default: break;
+    }
+    if (target != nullptr && ! target->floating && target->isShowing())
+        popover->setAvoid (getLocalArea (target, target->getLocalBounds()));
+    else
+        popover->setAvoid ({});
 }
 
 void MidiSkyEditor::stopPreview()

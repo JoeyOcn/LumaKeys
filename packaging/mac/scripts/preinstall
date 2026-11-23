@@ -1,12 +1,17 @@
 #!/bin/sh
-# Midi Cat antes se llamaba MidiSky. Se quita la versión vieja para que
-# Ableton no vea dos plugins iguales (los dos comparten el mismo código).
+# MidiCat antes se llamó MidiSky y luego "Midi Cat" (con espacio). Se quitan las versiones
+# viejas para que Ableton no vea dos plugins iguales (todos comparten el mismo código).
 rm -rf "/Library/Audio/Plug-Ins/VST3/MidiSky.vst3" \
        "/Library/Audio/Plug-Ins/Components/MidiSky.component" \
-       "/Applications/MidiSky.app"
+       "/Applications/MidiSky.app" \
+       "/Library/Audio/Plug-Ins/VST3/Midi Cat.vst3" \
+       "/Library/Audio/Plug-Ins/Components/Midi Cat.component" \
+       "/Applications/Midi Cat.app"
 CONSOLE_USER=$(stat -f %Su /dev/console 2>/dev/null)
 if [ -n "$CONSOLE_USER" ] && [ "$CONSOLE_USER" != "root" ] && [ -d "/Users/$CONSOLE_USER/Library/Audio/Plug-Ins" ]; then
     rm -rf "/Users/$CONSOLE_USER/Library/Audio/Plug-Ins/VST3/MidiSky.vst3" \
-           "/Users/$CONSOLE_USER/Library/Audio/Plug-Ins/Components/MidiSky.component"
+           "/Users/$CONSOLE_USER/Library/Audio/Plug-Ins/Components/MidiSky.component" \
+           "/Users/$CONSOLE_USER/Library/Audio/Plug-Ins/VST3/Midi Cat.vst3" \
+           "/Users/$CONSOLE_USER/Library/Audio/Plug-Ins/Components/Midi Cat.component"
 fi
 exit 0

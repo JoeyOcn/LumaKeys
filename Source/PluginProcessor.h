@@ -6,6 +6,7 @@
 #include "Recorder.h"
 #include "PluginHost.h"
 #include "Style.h"
+#include "Theory.h"
 
 //==============================================================================
 // Estado de las teclas, compartido sin bloqueos entre el hilo de audio y la interfaz.
@@ -60,7 +61,15 @@ public:
 
     juce::AudioProcessorValueTreeState apvts;
     juce::MidiKeyboardState uiKeyboard;   // notas tocadas con el mouse
+    juce::MidiKeyboardState degreeKeyboard;   // grados tocados con teclas de la compu (se graban siempre)
     NoteTracker notes;
+
+    // Grados con pads MIDI: el acorde de cada grado (lo pone la interfaz) y qué pad toca cuál
+    void setDegreeChord (int degree, const std::vector<int>& notesOfChord) noexcept;
+    void updateDegreeChords (int keyRoot, int scale, bool sevenths, int octave);
+    std::vector<int> degreeChordNotes (int degree) const;
+    static std::vector<int> voiceDegree (const theory::Diatonic&, int octave);
+    std::atomic<int> lastNoteEvent { 0 };   // última nota que llegó: contador << 16 | canal << 8 | nota (para aprender pads)
 
     bool isPianoReady() const { return piano.isReady(); }
     std::atomic<int> lastMidiActivityMs { 0 };
@@ -85,7 +94,13 @@ private:
     std::atomic<float>* latencyMs = nullptr;
     std::atomic<float>* instrumentParam = nullptr;
     std::atomic<float>* sustainParam = nullptr;
-    juce::MidiBuffer pedalScratch, mouseScratch;
+    juce::MidiBuffer pedalScratch, mouseScratch, padScratch, degreeScratch;
+    std::array<std::array<std::atomic<int>, 6>, 7> degreeChords {};   // -1 = sin nota
+    std::array<std::atomic<int>, 7> padMap {};                         // nota + 256 * canal, -1 = sin pad
+    std::atomic<bool> padsOn { true };
+    std::array<std::array<int, 6>, 7> padHeld {};                      // notas que dejó sonando cada pad
+    std::array<uint8_t, 128> padRefs {};
+    int noteEventCounter = 0;
     juce::SharedResourcePointer<Prefs> prefs;
     bool wasLatched = false;
     bool wasHosted = false;

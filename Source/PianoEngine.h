@@ -5,7 +5,7 @@
 #include <thread>
 
 //==============================================================================
-// Los sonidos de Midi Cat (inspirados en las colecciones de teclados clásicos)
+// Los sonidos de MidiCat (inspirados en las colecciones de teclados clásicos)
 enum class Instrument
 {
     grand = 0,      // Piano de cola (Yamaha, Salamander)

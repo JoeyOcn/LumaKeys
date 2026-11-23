@@ -69,7 +69,11 @@ namespace draw
     // Tarjeta levantada (pentagrama)
     void card (juce::Graphics&, juce::Rectangle<float>, const Skin&, float radius);
     // Pantalla negra con marco
-    void screen (juce::Graphics&, juce::Rectangle<float>, const Skin&, float k);
+    void screen (juce::Graphics&, juce::Rectangle<float>, const Skin&, float k, int shape = 0);
+    // Formas: 0 redondeada, 1 recta, 2 pastilla, 3 óvalo, 4 biselada, 5 muy redonda
+    juce::Path shapePath (juce::Rectangle<float>, int kind, float radius);
+    void recessShape (juce::Graphics&, const juce::Path&, const Skin&, juce::Colour fill);
+    void cardShape (juce::Graphics&, const juce::Path&, const Skin&);
     // Perilla con tapa de color
     void knobBody (juce::Graphics&, juce::Point<float> c, float r, const Skin&, juce::Colour cap);
 
@@ -80,6 +84,13 @@ namespace draw
 }
 
 //==============================================================================
+// Ajustes de movimiento de toda la interfaz (los pone el editor según tus preferencias)
+struct MotionSettings
+{
+    static inline float speed = 1.0f;     // 60 = sin animaciones (todo al instante)
+    static inline bool panels = true;     // los paneles aparecen con transición
+};
+
 // Ayuda para animar: corre a 60 cuadros por segundo solo mientras algo se mueve.
 class Animated : private juce::Timer
 {
@@ -89,7 +100,7 @@ protected:
     void animate() { if (! isTimerRunning()) startTimerHz (60); }
     virtual bool stepAnimation (float dt) = 0;   // true = sigue moviéndose
 private:
-    void timerCallback() override { if (! stepAnimation (1.0f / 60.0f)) stopTimer(); }
+    void timerCallback() override { if (! stepAnimation (juce::jmin (1.0f, MotionSettings::speed / 60.0f))) stopTimer(); }
 };
 
 static inline float approach (float v, float target, float rate, float dt)
@@ -157,6 +168,9 @@ private:
     float pos = 0.0f;
 };
 
+// Radio de las esquinas según la forma de botones elegida (normal = la proporción de siempre)
+float shapedRadius (const Skin&, float normal);
+
 // Botón físico con ícono y/o texto, que se hunde al presionarlo
 class PushButton : public juce::Component, public juce::SettableTooltipClient, private Animated
 {
@@ -198,6 +212,8 @@ public:
     FieldButton (UiContext& c, juce::String label) : ctx (c), text (std::move (label)) {}
     void paint (juce::Graphics&) override;
     void mouseDown (const juce::MouseEvent&) override { down = true; animate(); }
+    void mouseEnter (const juce::MouseEvent&) override { repaint(); }
+    void mouseExit (const juce::MouseEvent&) override { repaint(); }
     void mouseUp (const juce::MouseEvent&) override;
     void setValueText (const juce::String& v) { if (v != value) { value = v; repaint(); } }
     void setLed (int mode) { if (mode != led) { led = mode; repaint(); } } // -1 sin led, 0 apagado, 1 conectado, 2 actividad
@@ -243,13 +259,21 @@ public:
     void paint (juce::Graphics&) override;
     void resized() override;
     void mouseDown (const juce::MouseEvent&) override;
+    void mouseDrag (const juce::MouseEvent&) override;
+    void mouseUp (const juce::MouseEvent&) override;
+    void mouseMove (const juce::MouseEvent&) override;
     bool keyPressed (const juce::KeyPress&) override;
     void parentHierarchyChanged() override { resized(); }
     std::function<void()> onClose;
     juce::String anchorId;
+    float dimAmount = 1.0f;   // qué tanto se oscurece lo de atrás (0 = nada, para ver los cambios en vivo)
+    void setAvoid (juce::Rectangle<int> r) { avoid = r; userOffset = {}; resized(); repaint(); }
 
 private:
     void requestClose();
+    juce::Rectangle<int> avoid;
+    juce::Point<int> userOffset, dragStartOffset;
+    bool draggingPanel = false;
     UiContext& ctx;
     juce::String title;
     std::unique_ptr<juce::Component> content;

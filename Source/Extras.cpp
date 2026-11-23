@@ -416,9 +416,27 @@ void FileDragChip::paint (Graphics& g)
     const auto& pal = ctx.vis.pal;
     const bool has = getFile && getFile().existsAsFile();
     auto b = getLocalBounds().toFloat().reduced (1.0f);
-    draw::button (g, b, pal, b.getHeight() * 0.3f, down ? 1.0f : 0.0f, has, 0.0f);
-    auto c = b.withTrimmedBottom (2.5f).translated (0.0f, down ? 2.5f : 0.0f);
-    const auto col = has ? pal.accentInk : pal.btnText;
+    auto c = b;
+    if (compact)
+    {
+        // Minimalista: pastilla plana (llena si ya se puede arrastrar)
+        const float rad = b.getHeight() * shapedRadius (pal, 0.5f);
+        if (has) { g.setColour (pal.accent.withMultipliedBrightness (down ? 0.9f : 1.0f)); g.fillRoundedRectangle (b, rad); }
+        else
+        {
+            g.setColour (pal.text.withAlpha (down ? 0.12f : 0.06f));
+            g.fillRoundedRectangle (b, rad);
+            g.setColour (pal.text.withAlpha (0.2f));
+            g.drawRoundedRectangle (b.reduced (0.5f), rad, 1.0f);
+        }
+        c = b.reduced (6.0f, 0.0f);
+    }
+    else
+    {
+        draw::button (g, b, pal, b.getHeight() * 0.3f, down ? 1.0f : 0.0f, has, 0.0f);
+        c = b.withTrimmedBottom (2.5f).translated (0.0f, down ? 2.5f : 0.0f);
+    }
+    const auto col = has ? pal.accentInk : (compact ? pal.text : pal.btnText);
     if (progress >= 0.0f)
     {
         auto bar = c.reduced (10.0f, 0.0f).withSizeKeepingCentre (c.getWidth() - 20.0f, 6.0f).translated (0.0f, c.getHeight() * 0.28f);
@@ -445,7 +463,7 @@ void FileDragChip::mouseDrag (const MouseEvent& e)
     if (! f.existsAsFile()) return;
     dragging = true;
     SafePointer<FileDragChip> safe (this);
-    DragAndDropContainer::performExternalDragDropOfFiles ({ f.getFullPathName() }, false, this,
+    DragAndDropContainer::performExternalDragDropOfFiles ({ MidiRecorder::dragCopy (f).getFullPathName() }, false, this,
         [safe] { if (auto* c = safe.getComponent()) { c->down = false; c->dragging = false; c->repaint(); } });
 }
 
@@ -584,7 +602,7 @@ public:
         else if (downZone != midiZone && downZone != rowZone) return;
         if (! f.existsAsFile()) return;
         dragging = true;
-        DragAndDropContainer::performExternalDragDropOfFiles ({ f.getFullPathName() }, false, this);
+        DragAndDropContainer::performExternalDragDropOfFiles ({ MidiRecorder::dragCopy (f).getFullPathName() }, false, this);
     }
 
     void mouseUp (const MouseEvent& e) override
@@ -638,7 +656,7 @@ RecordingsPanel::RecordingsPanel (UiContext& c, Prefs& p, MidiRecorder& r, Metro
       recBtn (c, "rec", U8 ("Grabar o detener"), "Grabar"),
       folderBtn (c, "folder", U8 ("Abrir la carpeta de grabaciones"), "Abrir carpeta"),
       newBtn (c, "pencil", U8 ("Hacer un MIDI nuevo desde cero en el piano roll"), "Nuevo MIDI"),
-      editBtn (c, "pencil", U8 ("Abrir esta grabación en el piano roll"), "Editar en piano roll"),
+      editBtn (c, "pencil", U8 ("Abrir esta grabación en el piano roll"), "Editar piano"),
       countSw (c), mouseSw (c), audioSw (c),
       midiChip (c, U8 ("Arrastra MIDI"), "export"),
       audioChip (c, U8 ("Arrastra audio"), "wave"),
@@ -648,8 +666,12 @@ RecordingsPanel::RecordingsPanel (UiContext& c, Prefs& p, MidiRecorder& r, Metro
     viewport.setViewedComponent (list.get(), false);
     viewport.setScrollBarsShown (true, false);
     viewport.setScrollBarThickness (8);
-    for (Component* comp : std::initializer_list<Component*> { &recBtn, &folderBtn, &newBtn, &editBtn, &countSw, &mouseSw, &audioSw, &midiChip, &audioChip, &viewport, &clipView })
+    for (Component* comp : std::initializer_list<Component*> { &recBtn, &folderBtn, &newBtn, &editBtn, &countSw, &mouseSw, &midiChip, &audioChip, &viewport, &clipView })
         addAndMakeVisible (comp);
+    addChildComponent (audioSw);   // grabar audio ya no se ofrece
+    midiChip.compact = audioChip.compact = true;
+    midiChip.text = "MIDI";
+    audioChip.text = "Audio";
 
     recBtn.activeColour = Colour (0xffe5383b);
     recBtn.iconColour = Colour (0xffe5383b);
@@ -664,11 +686,9 @@ RecordingsPanel::RecordingsPanel (UiContext& c, Prefs& p, MidiRecorder& r, Metro
     countSw.onChange = [this] (bool v) { prefs.countIn = v; prefs.save (false); if (changed) changed(); };
     mouseSw.setOn (prefs.recordMouse);
     mouseSw.onChange = [this] (bool v) { prefs.recordMouse = v; prefs.save (false); if (changed) changed(); };
-    audioSw.setOn (prefs.recordAudio);
-    audioSw.onChange = [this] (bool v) { prefs.recordAudio = v; prefs.save (false); if (changed) changed(); };
 
     midiChip.getFile = [this] { return selectedFile(); };
-    midiChip.setTooltip (U8 ("Arrastra este MIDI a Ableton o FL Studio"));
+    midiChip.setTooltip (U8 ("Arrástralo a tu DAW (Ableton, FL Studio, Logic…). Lleva la tonalidad en el nombre"));
     audioChip.getFile = [this] { return MidiRecorder::freshAudioFor (selectedFile()); };
     audioChip.textWithoutFile = U8 ("Pasar a audio");
     audioChip.onClickWithoutFile = [this] { toAudio (selectedFile()); };
@@ -707,7 +727,7 @@ void RecordingsPanel::refreshList (bool selectNewest)
     {
         Row row;
         row.file = f;
-        row.title = f.getFileNameWithoutExtension().replace ("Midi Cat ", "");
+        row.title = f.getFileNameWithoutExtension().replace ("MidiCat ", "").replace (U8 ("Midi Cat "), "");
         row.hasAudio = MidiRecorder::freshAudioFor (f) != File();
         MidiClip clip;
         if (clip.load (f))
@@ -769,23 +789,23 @@ void RecordingsPanel::resized()
     folderBtn.setBounds (getWidth() - 180, 0, 180, 52);
     newBtn.setBounds (getWidth() - 180 - 10 - 160, 0, 160, 52);
 
-    // Tres opciones en fila
-    const int y = 76, colW = getWidth() / 3;
-    countSw.setBounds (colW - 70, y, 58, 30);
-    mouseSw.setBounds (colW * 2 - 70, y, 58, 30);
-    audioSw.setBounds (getWidth() - 58, y, 58, 30);
+    // Dos opciones en fila
+    const int y = 76;
+    countSw.setBounds (240, y, 58, 30);
+    mouseSw.setBounds (690, y, 58, 30);
 
     auto body = getLocalBounds().withTrimmedTop (128);
     auto left = body.removeFromLeft (440);
     viewport.setBounds (left.withTrimmedBottom (30));
     list->setSize (jmax (10, viewport.getWidth() - 10), jmax (10, (int) rows.size() * List::rowH));
     body.removeFromLeft (16);
-    auto bottom = body.removeFromBottom (48);
-    midiChip.setBounds (bottom.removeFromLeft (170));
-    bottom.removeFromLeft (8);
-    audioChip.setBounds (bottom.removeFromLeft (170));
-    editBtn.setBounds (bottom.removeFromRight (200));
-    body.removeFromBottom (8);
+    // Arriba de la vista: arrastrar MIDI (a la mano), audio y editar
+    auto top = body.removeFromTop (40);
+    midiChip.setBounds (top.removeFromLeft (124));
+    top.removeFromLeft (8);
+    audioChip.setBounds (top.removeFromLeft (150));
+    editBtn.setBounds (top.removeFromRight (160));
+    body.removeFromTop (10);
     clipView.setBounds (body);
 }
 
@@ -798,10 +818,8 @@ void RecordingsPanel::paint (Graphics& g)
 
     g.setColour (pal.text);
     g.setFont (ctx.fonts.ui (14.0f, 1));
-    const float colW = (float) getWidth() / 3.0f;
-    g.drawText (U8 ("Cuenta de 1 compás"), Rectangle<float> (0.0f, 76.0f, colW - 80.0f, 30.0f), Justification::centredRight, false);
-    g.drawText (U8 ("Grabar el mouse (teclas y grados)"), Rectangle<float> (colW, 76.0f, colW - 80.0f, 30.0f), Justification::centredRight, false);
-    g.drawText (U8 ("Grabar audio (WAV) también"), Rectangle<float> (colW * 2.0f, 76.0f, colW - 68.0f, 30.0f), Justification::centredRight, false);
+    g.drawText (U8 ("Cuenta de 1 compás"), Rectangle<float> (0.0f, 76.0f, 228.0f, 30.0f), Justification::centredRight, false);
+    g.drawText (U8 ("Grabar el mouse (teclas y grados)"), Rectangle<float> (330.0f, 76.0f, 348.0f, 30.0f), Justification::centredRight, false);
 
     if (rows.empty())
     {
@@ -810,7 +828,7 @@ void RecordingsPanel::paint (Graphics& g)
         g.drawFittedText (U8 ("Todavía no hay grabaciones.\nDale al botón rojo y toca algo."),
                           Rectangle<int> (0, 150, 440, 120), Justification::centred, 3);
     }
-    label (g, ctx, U8 ("Arrastra MIDI o Audio directo a Ableton o FL Studio"), Rectangle<float> (0.0f, (float) getHeight() - 24.0f, 440.0f, 22.0f), false);
+    label (g, ctx, U8 ("Arrastra MIDI o Audio directo a tu DAW (lleva la tonalidad en el nombre)"), Rectangle<float> (0.0f, (float) getHeight() - 24.0f, 440.0f, 22.0f), false);
 }
 
 //==============================================================================
@@ -885,7 +903,7 @@ PluginsPanel::PluginsPanel (UiContext& c, PluginHost& h, std::function<void()> o
     : ctx (c), host (h), openWindow (std::move (open)), backToPiano (std::move (back)),
       scanBtn (c, "plug", U8 ("Buscar tus instrumentos VST3 y Audio Units"), "Buscar instrumentos"),
       openBtn (c, "windows", U8 ("Abrir la ventana del instrumento"), "Abrir ventana"),
-      pianoBtn (c, "keys", U8 ("Volver a los pianos de Midi Cat"), "Pianos de Midi Cat")
+      pianoBtn (c, "keys", U8 ("Volver a los pianos de MidiCat"), "Pianos de MidiCat")
 {
     list = std::make_unique<List> (*this);
     viewport.setViewedComponent (list.get(), false);
@@ -899,7 +917,7 @@ PluginsPanel::PluginsPanel (UiContext& c, PluginHost& h, std::function<void()> o
     scanBtn.setActive (true);
     scanBtn.onClick = [this] { host.startScan(); scanRequested = true; message = U8 ("Buscando… (puede tardar un poco la primera vez)"); refresh(); };
     openBtn.onClick = [this] { if (openWindow) openWindow(); };
-    pianoBtn.onClick = [this] { if (backToPiano) backToPiano(); message = U8 ("Ahora suenan los pianos de Midi Cat."); refresh(); };
+    pianoBtn.onClick = [this] { if (backToPiano) backToPiano(); message = U8 ("Ahora suenan los pianos de MidiCat."); refresh(); };
     setSize (680, 500);
     refresh();
     startTimerHz (8);
@@ -980,7 +998,7 @@ void PluginsPanel::paint (Graphics& g)
     {
         g.setColour (pal.dim);
         g.setFont (ctx.fonts.ui (14.0f, 1));
-        g.drawFittedText (U8 ("Midi Cat busca en las carpetas normales de plugins.\nSi un plugin hace que se cierre, la próxima vez lo salta."),
+        g.drawFittedText (U8 ("MidiCat busca en las carpetas normales de plugins.\nSi un plugin hace que se cierre, la próxima vez lo salta."),
                           Rectangle<int> (0, 150, getWidth(), 80), Justification::centred, 3);
     }
 }

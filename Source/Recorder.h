@@ -26,6 +26,17 @@ public:
     static juce::File folder();
     static juce::Array<juce::File> recordings();   // la más nueva primero
     std::function<void (const juce::File&)> onSaved;
+
+    // Tonalidad que se guarda dentro de cada MIDI (la pone la interfaz)
+    std::atomic<int> keyRoot { -1 }, keyScale { 0 };
+
+    // La tonalidad de un MIDI: la que guardó MidiCat, la armadura del archivo o, si no hay, la que suena
+    struct KeyInfo { int root = 0, scale = 0; double bpm = 120.0; bool fromFile = false; };
+    static KeyInfo readKeyInfo (const juce::File& midi);
+    static void addKeyInfo (juce::MidiMessageSequence&, int root, int scale);
+    static juce::String keyText (int root, int scale);   // "MidiCat key=10,0"
+    // Copia para arrastrar con nombre útil: "Sib mayor - 96 BPM.mid" (o .wav)
+    static juce::File dragCopy (const juce::File& fileToDrag);
     std::function<void()> onEmpty;                  // se paró sin notas
 
     // --- Hilo de audio
@@ -33,7 +44,7 @@ public:
                   const Metronome& metro, bool metronomeOn, double sampleRate) noexcept;
 
     // --- Audio: se graba el sonido elegido (piano o tu instrumento) en un .wav junto al .mid
-    std::atomic<bool> recordAudio { true };
+    std::atomic<bool> recordAudio { false };
     void writeAudio (const juce::AudioBuffer<float>& buffer, int numSamples) noexcept;   // hilo de audio
     static juce::File audioFileFor (const juce::File& midi) { return midi.withFileExtension (".wav"); }
     // El WAV solo cuenta si es más nuevo que el MIDI (si editaste el MIDI después, hay que pasarlo otra vez)
@@ -72,7 +83,7 @@ private:
     std::atomic<bool> grid { false };
 
     // Audio
-    juce::TimeSliceThread writerThread { "Midi Cat: audio" };
+    juce::TimeSliceThread writerThread { "MidiCat: audio" };
     juce::SpinLock writerLock;
     std::unique_ptr<juce::AudioFormatWriter::ThreadedWriter> writer;
     juce::File writerTemp, writerTarget;
