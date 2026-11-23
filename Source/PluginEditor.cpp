@@ -1787,6 +1787,13 @@ void MidiSkyEditor::openPianoRoll (File f)
         rollWindow = std::make_unique<PianoRollWindow> (winCtx, proc.uiKeyboard, look);
         auto* metro = &proc.metronome;
         rollWindow->roll().onMetroClick = [metro] (bool accent) { metro->clickNow (accent); };
+        auto* ms = &proc.metroSettings;
+        rollWindow->roll().onStopMetronome = [ms]
+        {
+            if (! ms->on.load()) return false;
+            ms->on.store (false);
+            return true;
+        };
         Component::SafePointer<MidiSkyEditor> safe (this);
         rollWindow->onClose = [safe]
         {
@@ -1944,6 +1951,16 @@ static int normalisedKey (const KeyPress& k)
 
 bool MidiSkyEditor::keyPressed (const KeyPress& key)
 {
+    // Enter: para el metrónomo si está sonando (Enter normal o el del teclado numérico)
+    {
+        const int kc = key.getKeyCode();
+        if ((kc == KeyPress::returnKey || kc == 3) && ! DegreeInputPanel::capturing && proc.metroSettings.on.load())
+        {
+            proc.metroSettings.on.store (false);
+            rail.metroBtn.setActive (false);
+            return true;
+        }
+    }
     if (! prefs->degreeKeysOn || DegreeInputPanel::capturing) return false;
     const auto mods = key.getModifiers();
     if (mods.isCommandDown() || mods.isCtrlDown() || mods.isAltDown()) return false;
