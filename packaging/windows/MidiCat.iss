@@ -1,4 +1,4 @@
-﻿﻿; Instalador de Midi Cat para Windows (Inno Setup 6)
+﻿; Instalador de Midi Cat para Windows (Inno Setup 6)
 #ifndef AppVersion
   #define AppVersion "1.3.0"
 #endif
