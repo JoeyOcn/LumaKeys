@@ -4,6 +4,8 @@
 #include "PluginProcessor.h"
 #include "Sections.h"
 #include "Floating.h"
+#include "Extras.h"
+#include "PianoRoll.h"
 
 //==============================================================================
 class MidiSkyLook : public juce::LookAndFeel_V4
@@ -20,6 +22,36 @@ public:
 private:
     Fonts& fonts;
     Skin pal;
+};
+
+//==============================================================================
+// Toca una grabación (para escucharla antes de arrastrarla)
+class ClipPlayer : private juce::HighResolutionTimer
+{
+public:
+    explicit ClipPlayer (juce::MidiKeyboardState& s) : state (s) {}
+    ~ClipPlayer() override { stop(); }
+    void play (const juce::File&);
+    void stop();
+    bool isPlaying() const { return isTimerRunning(); }
+
+private:
+    void hiResTimerCallback() override;
+    struct Ev { double t; int note; float vel; bool on; };
+    juce::MidiKeyboardState& state;
+    std::vector<Ev> events;
+    size_t next = 0;
+    double startMs = 0.0;
+    std::array<int, 128> held {};
+};
+
+// Ventana con la interfaz de tu instrumento VST3/AU
+class HostedWindow : public juce::DocumentWindow
+{
+public:
+    HostedWindow (const juce::String& name, juce::Component* editor, juce::Colour bg);
+    void closeButtonPressed() override { if (onClose) onClose(); }
+    std::function<void()> onClose;
 };
 
 //==============================================================================
@@ -76,9 +108,18 @@ private:
     void showKeysPanel (juce::Component& anchor);
     void showLatencyPanel();
     void showAbout();
+    void showMetronomePanel (juce::Component& anchor);
+    void showRecordingsPanel (juce::Component& anchor);
+    void showPluginsPanel (juce::Component& anchor);
+    void openHostedWindow();
+    void openPianoRoll (juce::File f);   // copia: el panel que la pide se cierra
+    void newMidiFile();
+    void saveLayoutPreset (const juce::String& name);
+    void applyLayoutPreset (const LayoutPreset&);
+    void updateTransport (float dt);
     juce::PopupMenu::Options menuOptions (juce::Component& target, int minWidth = 240);
 
-    void previewChord (int index);
+    void previewChord (int index, float velocity = 0.68f);
     void stopPreview();
     void setChoice (const juce::String& id, int index);
     void setBool (const juce::String& id, bool value);
@@ -101,6 +142,13 @@ private:
 
     std::map<juce::String, std::unique_ptr<FloatingWindow>> windows;
     std::unique_ptr<Popover> popover;
+    std::unique_ptr<HostedWindow> hostedWindow;
+    std::unique_ptr<PianoRollWindow> rollWindow;
+    ClipPlayer clipPlayer { proc.uiKeyboard };
+    uint32_t lastBeatCount = 0;
+    float metroFlash = 0.0f;
+    int lastRecState = 0;
+    bool lastLatched = false, lastPedalShown = false;
 
     juce::Image background;
     float k = 1.0f;
@@ -120,13 +168,21 @@ private:
     double lastFrame = 0.0;
     double startTime = 0.0;
     std::vector<int> previewNotes;
-    double previewOffAt = 0.0;
+    double previewOffAt = 0.0, previewStartedAt = 0.0;
     juce::Array<juce::MidiDeviceInfo> knownMidiInputs;
     bool restoredFloats = false;
 
     int lastRoot = -1, lastScale = -1;
     bool lastLatin = false, lastSevenths = false, lastHighlight = true, lastAuto = true, lastAutoHas = false;
     std::vector<int> lastActive;
+
+    // Qué notas forman "el acorde de ahora" (con pedal, las viejas no se mezclan)
+    std::array<double, 128> onsetMs {}, releaseMs {};
+    double phraseStartMs = 0.0, lastOnsetMs = 0.0;
+    bool lastPedalSeen = false;
+    std::vector<int> candidate;
+    double candidateSince = 0.0;
+    std::vector<int> chordSetNow (double now);
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MidiSkyEditor)
 };

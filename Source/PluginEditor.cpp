@@ -33,6 +33,9 @@ void MidiSkyLook::setPalette (const Skin& p)
     setColour (TooltipWindow::backgroundColourId, menuBg);
     setColour (TooltipWindow::textColourId, menuText);
     setColour (TooltipWindow::outlineColourId, p.edge);
+    setColour (ScrollBar::thumbColourId, p.text.withAlpha (0.28f));
+    setColour (ScrollBar::trackColourId, Colours::transparentBlack);
+    setColour (ScrollBar::backgroundColourId, Colours::transparentBlack);
 }
 
 void MidiSkyLook::drawPopupMenuBackground (Graphics& g, int width, int height)
@@ -70,7 +73,8 @@ static int whiteIndexOfNote (int note)
     return (note / 12) * 7 + inOct[note % 12];
 }
 
-// Medidas a escala 1 (ventana normal de 1200 x 760)
+// Medidas a escala 1 (ventana normal de 1290 x 760)
+static constexpr float kRefW = 1290.0f;
 static constexpr float kMargin = 22.0f, kGap = 16.0f, kRailH = 62.0f, kRailHidden = 56.0f,
                        kMiddleH = 388.0f, kDegreesH = 104.0f, kKeysH = 234.0f, kSideW = 350.0f, kInnerGap = 12.0f;
 
@@ -107,6 +111,16 @@ MidiSkyEditor::MidiSkyEditor (MidiSkyProcessor& p)
     rail.windowsBtn.onClick = [this] { showWindowsMenu(); };
     rail.hideBtn.onClick    = [this] { setHideParams (! prefs->hideParams); };
     rail.menuBtn.onClick    = [this] { showMainMenu(); };
+    rail.recBtn.onClick     = [this] { proc.recorder.toggle(); };
+    rail.recBtn.onMore      = [this] { showRecordingsPanel (rail.recBtn); };
+    rail.metroBtn.onClick   = [this] { proc.metroSettings.on.store (! proc.metroSettings.on.load()); };
+    rail.metroBtn.onMore    = [this] { showMetronomePanel (rail.metroBtn); };
+
+    if (proc.host != nullptr)
+    {
+        proc.host->onBeforeChange = [this] { hostedWindow.reset(); };
+        proc.host->onChanged = [this] { keyboard.repaint(); timerCallback(); };
+    }
     {
         Component::SafePointer<MidiSkyEditor> safeEditor (this);
         rail.resetBtn.onClick = [safeEditor]
@@ -126,6 +140,8 @@ MidiSkyEditor::MidiSkyEditor (MidiSkyProcessor& p)
     {
         const bool on = proc.apvts.getRawParameterValue ("sustain")->load() > 0.5f;
         setBool ("sustain", ! on);
+        keyboard.pedalBtn.setActive (! on || vis.pedal);
+        keyboard.pedalBtn.setLabel (! on ? "Pedal puesto" : "Pedal");
     };
     keyboard.keysColourBtn.onClick = [this] { showKeysPanel (keyboard.keysColourBtn); };
     keyboard.uiColourBtn.onClick   = [this] { showInterfacePanel (keyboard.uiColourBtn); };
@@ -158,7 +174,12 @@ MidiSkyEditor::MidiSkyEditor (MidiSkyProcessor& p)
         setChoice ("root", pc + 1);
         setChoice ("scale", minor ? 1 : 0);
     };
-    degrees.onPreview = [this] (int i) { previewChord (i); };
+    degrees.onPreview = [this] (int i, float vel) { previewChord (i, vel); };
+    degrees.onRelease = [this]
+    {
+        // Suena lo que lo dejes apretado (mínimo un instante, para que se oiga)
+        previewOffAt = jmax (Time::getMillisecondCounterHiRes(), previewStartedAt + 220.0);
+    };
 
    #if MIDISKY_DEMO
     {
@@ -171,6 +192,9 @@ MidiSkyEditor::MidiSkyEditor (MidiSkyProcessor& p)
                 proc.notes.push ((uint8_t) n, 100);
             }
         if (SystemStats::getEnvironmentVariable ("MIDISKY_PEDAL", "") == "1") proc.notes.pedal.store (true);
+        for (auto& t : StringArray::fromTokens (SystemStats::getEnvironmentVariable ("MIDISKY_SUS", ""), ",", ""))
+            if (t.trim().isNotEmpty()) proc.notes.sustained[(size_t) jlimit (0, 127, t.trim().getIntValue())].store (90);
+        if (SystemStats::getEnvironmentVariable ("MIDISKY_LATCH", "") == "1") setBool ("sustain", true);
         demoPopover = SystemStats::getEnvironmentVariable ("MIDISKY_POPOVER", "");
     }
    #endif
@@ -199,7 +223,11 @@ MidiSkyEditor::~MidiSkyEditor()
     stopTimer();
     vblank.reset();
     stopPreview();
+    clipPlayer.stop();
     popover.reset();
+    rollWindow.reset();
+    hostedWindow.reset();
+    if (proc.host != nullptr) { proc.host->onBeforeChange = nullptr; proc.host->onChanged = nullptr; proc.host->onListChanged = nullptr; }
     prefs->removeChangeListener (this);
     for (auto& [id, w] : windows)
         if (w != nullptr) { w->releaseSection(); w->setLookAndFeel (nullptr); }
@@ -274,11 +302,12 @@ void MidiSkyEditor::refreshPalette()
     repaint();
     for (auto& [id, w] : windows)
         if (w != nullptr) w->repaint();
-    if (popover != nullptr) popover->repaint();
+    if (popover != nullptr) { popover->sendLookAndFeelChange(); popover->repaint(); }
 }
 
 void MidiSkyEditor::changeListenerCallback (ChangeBroadcaster*)
 {
+    proc.applyPrefs();
     // Otra instancia (o este editor) cambió las preferencias
     const bool hideChanged = vis.hideParams != prefs->hideParams;
     const bool transpChanged = vis.transparent != prefs->transparent;
@@ -332,7 +361,7 @@ void MidiSkyEditor::resized()
     proc.editorW.store (getWidth());
     proc.editorH.store (getHeight());
 
-    k = jlimit (0.45f, 2.6f, jmin ((float) getWidth() / 1200.0f, (float) getHeight() / naturalHeight()));
+    k = jlimit (0.45f, 2.6f, jmin ((float) getWidth() / kRefW, (float) getHeight() / naturalHeight()));
     const int m = roundToInt (kMargin * k);
     const int gap = roundToInt (kGap * k);
 
@@ -608,7 +637,7 @@ void MidiSkyEditor::restoreFloating()
         }
     }
     // Que la ventana principal quede del tamaño justo para lo que se quedó en ella
-    if (any) fitHeightToContent (jlimit (0.45f, 2.6f, (float) getWidth() / 1200.0f));
+    if (any) fitHeightToContent (jlimit (0.45f, 2.6f, (float) getWidth() / kRefW));
 }
 
 void MidiSkyEditor::recreateFloating()
@@ -699,6 +728,43 @@ void MidiSkyEditor::updateKeyState (bool& keyChanged)
     }
 }
 
+std::vector<int> MidiSkyEditor::chordSetNow (double now)
+{
+    std::vector<int> held, sus;
+    for (int n = 0; n < 128; ++n)
+    {
+        if (vis.down[(size_t) n] > 0) held.push_back (n);
+        else if (vis.sus[(size_t) n] > 0) sus.push_back (n);
+    }
+    auto pcsOf = [] (const std::vector<int>& v) { uint16_t m = 0; for (auto n : v) m = (uint16_t) (m | (1u << (unsigned) (n % 12))); return theory::countBits (m); };
+
+    double from = jmax (phraseStartMs, lastOnsetMs - 1600.0);
+    std::vector<int> set = held;
+    if (! held.empty())
+    {
+        // Si se acaba de tocar un acorde nuevo (varias notas juntas), solo cuenta ese
+        double newest = 0.0;
+        for (auto n : held) newest = jmax (newest, onsetMs[(size_t) n]);
+        std::vector<int> group;
+        for (auto n : held) if (onsetMs[(size_t) n] >= newest - 90.0) group.push_back (n);
+        if (pcsOf (group) >= 2 && group.size() < held.size())
+            set = group;
+        if (pcsOf (set) >= 2)
+        {
+            double first = newest;
+            for (auto n : set) first = jmin (first, onsetMs[(size_t) n]);
+            phraseStartMs = jmax (phraseStartMs, first - 60.0);
+            from = phraseStartMs;
+        }
+    }
+    for (auto n : sus)
+        if (onsetMs[(size_t) n] >= from) set.push_back (n);
+    std::sort (set.begin(), set.end());
+    set.erase (std::unique (set.begin(), set.end()), set.end());
+    juce::ignoreUnused (now);
+    return set;
+}
+
 void MidiSkyEditor::frame()
 {
     const double now = Time::getMillisecondCounterHiRes();
@@ -721,6 +787,8 @@ void MidiSkyEditor::frame()
                 {
                     const auto ev = proc.notes.events[(size_t) (start + i)];
                     vis.flash[ev.note] = 1.0f;
+                    onsetMs[ev.note] = now;
+                    lastOnsetMs = now;
                     hist[(size_t) (ev.note % 12)] += 0.5f + ev.velocity / 127.0f;
                 }
             };
@@ -738,11 +806,21 @@ void MidiSkyEditor::frame()
         const auto d = proc.notes.down[n].load();
         const auto s = proc.notes.sustained[n].load();
         if (d != vis.down[n] || s != vis.sus[n]) keysAnimating = true;
+        if (d == 0 && vis.down[n] > 0) releaseMs[n] = now;
         vis.down[n] = d;
         vis.sus[n] = s;
         if (d > 0) hist[n % 12] += dt * 1.2f;
 
-        const float target = d > 0 ? 0.62f + 0.38f * (float) d / 127.0f : (s > 0 ? 0.32f + 0.2f * (float) s / 127.0f : 0.0f);
+        // Las notas que deja sonando el pedal se van apagando poco a poco (como el sonido)
+        float susLevel = 0.0f;
+        if (d == 0 && s > 0)
+        {
+            const float age = (float) jmax (0.0, now - releaseMs[n]) / 1000.0f;
+            const bool old = onsetMs[n] < phraseStartMs;
+            susLevel = (0.30f + 0.18f * (float) s / 127.0f) * jmax (0.4f, std::exp (-age / 4.0f)) * (old ? 0.6f : 1.0f);
+            if (age < 12.0f) keysAnimating = true;
+        }
+        const float target = d > 0 ? 0.62f + 0.38f * (float) d / 127.0f : susLevel;
         const float boosted = jmin (1.0f, target + vis.flash[n] * 0.25f);
         float& lv = vis.level[n];
         if (std::abs (boosted - lv) > 0.002f)
@@ -758,15 +836,32 @@ void MidiSkyEditor::frame()
     for (auto& h : hist) h *= histDecay;
 
     const bool pedal = proc.notes.pedal.load();
-    vis.active.clear();
-    vis.activeMask = 0;
+    if (pedal != lastPedalSeen) { phraseStartMs = now; lastPedalSeen = pedal; }
+
+    vis.sounding.clear();
     for (int n = 0; n < 128; ++n)
         if (vis.down[(size_t) n] > 0 || vis.sus[(size_t) n] > 0)
+            vis.sounding.push_back (n);
+
+    // El acorde que se nombra: se espera un instante a que las notas terminen de llegar
+    // (o de soltarse) para que la pantalla y los grados no parpadeen
+    {
+        auto next = chordSetNow (now);
+        if (next != candidate) { candidate = next; candidateSince = now; }
+        if (candidate != vis.active)
         {
-            vis.active.push_back (n);
-            vis.activeMask = (uint16_t) (vis.activeMask | (1u << (unsigned) (n % 12)));
+            const bool grows = std::includes (candidate.begin(), candidate.end(), vis.active.begin(), vis.active.end());
+            const bool shrinks = std::includes (vis.active.begin(), vis.active.end(), candidate.begin(), candidate.end());
+            const double wait = candidate.empty() ? 260.0 : (grows ? 40.0 : (shrinks ? 130.0 : 60.0));
+            if (now - candidateSince >= wait || vis.active.empty())
+            {
+                vis.active = candidate;
+                vis.activeMask = 0;
+                for (auto n : vis.active) vis.activeMask = (uint16_t) (vis.activeMask | (1u << (unsigned) (n % 12)));
+                vis.lowest = vis.active.empty() ? -1 : vis.active.front();
+            }
         }
-    vis.lowest = vis.active.empty() ? -1 : vis.active.front();
+    }
 
     for (int pc = 0; pc < 12; ++pc)
     {
@@ -786,11 +881,12 @@ void MidiSkyEditor::frame()
         vis.degree = theory::degreeOf (vis.chord, vis.keyRoot, vis.scale);
 
         const int count = (int) vis.active.size();
+        const int distinct = theory::countBits (vis.activeMask);
         String big;
         if (count == 0) big = theory::keyTitle (vis.keyRoot, vis.scale, vis.latin);
-        else if (count == 1) big = theory::noteName (vis.active.front(), vis.sig, vis.latin, true);
-        else if (vis.chord.valid && (count >= 3 || vis.chord.suffix == "5")) big = vis.chord.symbol;
-        else if (count == 2) big = theory::intervalName (vis.active[1] - vis.active[0]);
+        else if (distinct == 1) big = theory::noteName (vis.active.front(), vis.sig, vis.latin, count == 1);
+        else if (vis.chord.valid && (distinct >= 3 || vis.chord.suffix == "5")) big = vis.chord.symbol;
+        else if (distinct == 2) big = theory::intervalName (theory::firstInterval (vis.active));
         else
         {
             StringArray sn;
@@ -805,11 +901,17 @@ void MidiSkyEditor::frame()
             vis.bigFade = 0.0f;
         }
 
+        // Grado que se enciende: el acorde tiene la raíz de ese grado y todas sus notas
+        // son de ese acorde de la escala (sirve con tríadas, séptimas, inversiones y quintas)
         vis.activeDegree = -1;
-        for (int i = 0; i < (int) vis.diatonic.size() && i < 7; ++i)
+        if (vis.chord.valid && theory::countBits (vis.activeMask) >= 2)
         {
-            const auto& d = vis.diatonic[(size_t) i];
-            if (vis.chord.valid && vis.chord.root == d.rootPc && (d.mask & ~vis.activeMask) == 0) vis.activeDegree = i;
+            const auto full = theory::diatonicChords (vis.keyRoot, vis.scale, true, vis.latin);
+            for (int i = 0; i < (int) full.size() && i < 7; ++i)
+            {
+                const auto& d = full[(size_t) i];
+                if (vis.chord.root == d.rootPc && (vis.activeMask & ~d.mask) == 0) { vis.activeDegree = i; break; }
+            }
         }
         lastActive = vis.active;
         score.repaint();
@@ -846,7 +948,7 @@ void MidiSkyEditor::frame()
     // Teclado: seguir las notas que salen del rango y deslizar suavemente
     {
         int lowOut = 200, highOut = -1;
-        for (auto n : vis.active)
+        for (auto n : vis.active)   // solo lo que se está tocando ahora
         {
             if (n < prefs->startC) lowOut = jmin (lowOut, n);
             if (n > prefs->startC + 12 * prefs->octaves) highOut = jmax (highOut, n);
@@ -872,6 +974,41 @@ void MidiSkyEditor::frame()
 
     if (previewOffAt > 0.0 && now > previewOffAt)
         stopPreview();
+
+    // Pedal: el botón responde al instante (pedal en pantalla o pedal físico)
+    const bool latched = proc.apvts.getRawParameterValue ("sustain")->load() > 0.5f;
+    if (latched != lastLatched || vis.pedal != lastPedalShown)
+    {
+        keyboard.pedalBtn.setActive (latched || vis.pedal);
+        keyboard.pedalBtn.setLabel (latched ? "Pedal puesto" : "Pedal");
+        lastLatched = latched;
+        lastPedalShown = vis.pedal;
+    }
+    updateTransport (dt);
+}
+
+void MidiSkyEditor::updateTransport (float dt)
+{
+    // Metrónomo: el botón se prende y parpadea con cada tiempo
+    const bool metroOn = proc.metroSettings.on.load();
+    rail.metroBtn.setActive (metroOn);
+    const auto count = proc.metronome.uiBeatCount.load();
+    if (count != lastBeatCount)
+    {
+        lastBeatCount = count;
+        metroFlash = proc.metronome.uiBeat.load() == 0 ? 1.0f : 0.6f;
+    }
+    metroFlash = jmax (0.0f, metroFlash - dt * 5.0f);
+    rail.metroBtn.setFlash (metroOn ? metroFlash : 0.0f);
+
+    // Grabar: rojo mientras graba; durante la cuenta parpadea con los tiempos
+    const int rs = proc.recorder.state();
+    rail.recBtn.setActive (rs == 2);
+    rail.recBtn.setIcon (rs == 0 ? "rec" : "stop");
+    if (rs == 1) rail.recBtn.setFlash (metroFlash);
+    else if (rs == 2) rail.recBtn.setFlash (0.35f + 0.35f * std::sin ((float) vis.time * 4.0f));
+    else rail.recBtn.setFlash (0.0f);
+    lastRecState = rs;
 }
 
 void MidiSkyEditor::timerCallback()
@@ -880,11 +1017,11 @@ void MidiSkyEditor::timerCallback()
     keyboard.pianoSw.setOn (proc.apvts.getRawParameterValue ("piano")->load() > 0.5f);
     keyboard.scaleSw.setOn (proc.apvts.getRawParameterValue ("highlight")->load() > 0.5f);
     const int inst = (int) proc.apvts.getRawParameterValue ("instrument")->load();
-    keyboard.soundBtn.setValueText (instrumentNames()[inst]);
+    if (proc.host != nullptr && proc.host->hasInstrument())
+        keyboard.soundBtn.setValueText (proc.host->instrumentName());
+    else
+        keyboard.soundBtn.setValueText (instrumentNames()[inst]);
     keyboard.soundBtn.setLed (proc.isPianoReady() ? -1 : 0);
-    const bool latched = proc.apvts.getRawParameterValue ("sustain")->load() > 0.5f;
-    keyboard.pedalBtn.setActive (latched || vis.pedal);
-    keyboard.pedalBtn.setLabel (latched ? "Pedal puesto" : "Pedal");
     if (auto* lat = proc.apvts.getParameter ("latency"))
         rail.latency.setValueText (lat->getCurrentValueAsText());
 
@@ -1083,9 +1220,48 @@ void MidiSkyEditor::showSoundMenu()
     for (int i : { 4, 5 }) m.addItem (1 + i, names[i], true, current == i);
     m.addSectionHeader ("Otros teclados");
     for (int i : { 6, 7, 8 }) m.addItem (1 + i, names[i], true, current == i);
-    m.showMenuAsync (menuOptions (keyboard.soundBtn, 240), [this] (int r)
+
+    const bool hosted = proc.host != nullptr && proc.host->hasInstrument();
+    Array<PluginDescription> mine;
+    if (proc.host != nullptr)
     {
-        if (r > 0) setChoice ("instrument", r - 1);
+        // App sola: tus instrumentos VST3 / AU
+        mine = proc.host->instruments();
+        m.addSectionHeader ("Tus instrumentos (VST3 / AU)");
+        for (int i = 0; i < mine.size() && i < 60; ++i)
+        {
+            const auto& d = mine.getReference (i);
+            const bool cur = hosted && proc.host->description().fileOrIdentifier == d.fileOrIdentifier && proc.host->description().uniqueId == d.uniqueId;
+            m.addItem (100 + i, d.name + (d.pluginFormatName == "AudioUnit" ? "  (AU)" : "  (VST3)"), true, cur);
+        }
+        if (hosted) m.addItem (90, U8 ("Abrir la ventana de ") + proc.host->instrumentName());
+        m.addItem (91, mine.isEmpty() ? U8 ("Buscar mis instrumentos…") : U8 ("Buscar o administrar instrumentos…"));
+    }
+    m.showMenuAsync (menuOptions (keyboard.soundBtn, 260), [this, mine] (int r)
+    {
+        if (r <= 0) return;
+        if (r < 90)
+        {
+            if (proc.host != nullptr) proc.host->unload();
+            setChoice ("instrument", r - 1);
+        }
+        else if (r == 90) openHostedWindow();
+        else if (r == 91) showPluginsPanel (keyboard.soundBtn);
+        else if (r >= 100 && r - 100 < mine.size() && proc.host != nullptr)
+        {
+            const auto d = mine[r - 100];
+            Component::SafePointer<MidiSkyEditor> safe (this);
+            proc.host->load (d, [safe] (const String& err)
+            {
+                if (auto* ed = safe.getComponent())
+                {
+                    if (err.isNotEmpty())
+                        ed->showPopover ("error", "No se pudo abrir", std::make_unique<TextPanel> (ed->ctx, err, 420), ed->keyboard.soundBtn);
+                    else
+                        ed->openHostedWindow();
+                }
+            });
+        }
     });
 }
 
@@ -1101,8 +1277,31 @@ void MidiSkyEditor::showWindowsMenu()
     m.addItem (50, "Separar todo");
     m.addItem (51, U8 ("Restablecer: todo a su lugar"), anyFloating() || prefs->transparent);
     m.addItem (52, U8 ("Volver a acomodar las ventanas separadas"), anyFloating());
+
+    m.addSectionHeader ("Mis acomodos");
+    for (int i = 0; i < (int) prefs->layouts.size(); ++i)
+        m.addItem (200 + i, prefs->layouts[(size_t) i].name);
+    if (prefs->layouts.empty()) m.addItem (-1, U8 ("(todavía no guardas ninguno)"), false);
+    m.addItem (60, U8 ("Guardar este acomodo…"));
+    if (! prefs->layouts.empty())
+    {
+        PopupMenu del;
+        for (int i = 0; i < (int) prefs->layouts.size(); ++i)
+            del.addItem (300 + i, prefs->layouts[(size_t) i].name);
+        m.addSubMenu ("Borrar un acomodo", del);
+    }
     m.showMenuAsync (menuOptions (rail.windowsBtn, 280), [this] (int r)
     {
+        if (r == 60)
+        {
+            auto panel = std::make_unique<NamePanel> (ctx, U8 ("Nombre del acomodo (guarda las ventanas separadas, invisibles y su lugar)"),
+                                                      "Acomodo " + String ((int) prefs->layouts.size() + 1));
+            panel->onSave = [this] (const String& name) { saveLayoutPreset (name); MessageManager::callAsync ([this] { closePopover(); }); };
+            showPopover ("acomodo", "Guardar acomodo", std::move (panel), rail.windowsBtn);
+            return;
+        }
+        if (r >= 200 && r < 200 + (int) prefs->layouts.size()) { const auto l = prefs->layouts[(size_t) (r - 200)]; applyLayoutPreset (l); return; }
+        if (r >= 300 && r < 300 + (int) prefs->layouts.size()) { prefs->layouts.erase (prefs->layouts.begin() + (r - 300)); prefs->save (false); return; }
         auto secs = sections();
         if (r >= 1 && r <= (int) secs.size())
         {
@@ -1160,6 +1359,11 @@ void MidiSkyEditor::showMainMenu()
     m.addItem (20, U8 ("Color de la interfaz…"));
     m.addItem (21, U8 ("Color de las teclas…"));
     m.addSeparator();
+    m.addItem (22, U8 ("Metrónomo…"));
+    m.addItem (23, U8 ("Grabaciones MIDI…"));
+    m.addItem (25, U8 ("Nuevo MIDI en el piano roll…"));
+    if (proc.host != nullptr) m.addItem (24, U8 ("Tus instrumentos VST3 / AU…"));
+    m.addSeparator();
     m.addSubMenu ("Nombres de las notas", names);
     m.addSubMenu ("Acordes de la tonalidad", chordsM);
     m.addSubMenu (U8 ("Tamaño de la ventana"), size);
@@ -1184,13 +1388,17 @@ void MidiSkyEditor::showMainMenu()
         else if (r == 15) resetLayout();
         else if (r == 20) showInterfacePanel (rail.colourBtn);
         else if (r == 21) showKeysPanel (keyboard.keysColourBtn);
+        else if (r == 22) showMetronomePanel (rail.metroBtn);
+        else if (r == 23) showRecordingsPanel (rail.recBtn);
+        else if (r == 24) showPluginsPanel (keyboard.soundBtn);
+        else if (r == 25) newMidiFile();
         else if (r >= 30 && r <= 32) setDayNight (r - 30);
         else if (r >= 40 && r < 40 + (int) looks().size()) { prefs->look = looks()[(size_t) (r - 40)].id; prefs->save(); }
         else if (r >= 60 && r < 64) { prefs->keyStyle = r - 60; prefs->save(); }
         else if (r > 300)
         {
             const float s = (float) (r - 300) / 100.0f;
-            setSize (roundToInt (1200.0f * s), roundToInt (naturalHeight() * s));
+            setSize (roundToInt (kRefW * s), roundToInt (naturalHeight() * s));
         }
     });
 }
@@ -1233,7 +1441,7 @@ void MidiSkyEditor::showLatencyPanel()
 
 void MidiSkyEditor::showAbout()
 {
-    const auto text = U8 ("Midi Cat 1.3: visualizador de escalas, acordes, notas y pentagrama, con pianos.\n\n"
+    const auto text = U8 ("Midi Cat 1.3.1: visualizador de escalas, acordes, notas y pentagrama, con pianos, metrónomo, grabadora MIDI y piano roll.\n\n"
                           "Piano de cola: Salamander Grand Piano de Alexander Holm (CC BY 3.0).\n"
                           "Piano de concierto: Splendid Grand Piano, muestras de dominio público de Akai.\n"
                           "Piano eléctrico: jRhodes3d de Jeff Learman (CC BY 4.0), github.com/sfzinstruments/jlearman.jRhodes3d\n"
@@ -1244,7 +1452,200 @@ void MidiSkyEditor::showAbout()
 }
 
 //==============================================================================
-void MidiSkyEditor::previewChord (int index)
+// Metrónomo, grabaciones, instrumentos y acomodos
+//==============================================================================
+void MidiSkyEditor::showMetronomePanel (Component& anchor)
+{
+    showPopover ("metro", U8 ("Metrónomo"),
+                 std::make_unique<MetronomePanel> (ctx, *prefs, proc.metroSettings, proc.metronome, ! isStandalone(), [this] { proc.applyPrefs(); }),
+                 anchor);
+}
+
+void MidiSkyEditor::showRecordingsPanel (Component& anchor)
+{
+    auto panel = std::make_unique<RecordingsPanel> (ctx, *prefs, proc.recorder, proc.metroSettings, [this] { proc.applyPrefs(); });
+    panel->onPlay = [this] (const File& f) { clipPlayer.play (f); };
+    panel->onStopPlay = [this] { clipPlayer.stop(); };
+    panel->isPlaying = [this] { return clipPlayer.isPlaying(); };
+    panel->onEdit = [this] (const File& f) { openPianoRoll (f); };
+    panel->onNew = [this] { newMidiFile(); };
+    showPopover ("grabaciones", "Grabaciones MIDI", std::move (panel), anchor);
+}
+
+void MidiSkyEditor::showPluginsPanel (Component& anchor)
+{
+    if (proc.host == nullptr) return;
+    auto panel = std::make_unique<PluginsPanel> (ctx, *proc.host,
+                                                 [this] { openHostedWindow(); },
+                                                 [this] { if (proc.host != nullptr) proc.host->unload(); });
+    auto* raw = panel.get();
+    Component::SafePointer<Component> safePanel (raw);
+    proc.host->onListChanged = [safePanel]
+    {
+        if (auto* p = dynamic_cast<PluginsPanel*> (safePanel.getComponent())) p->refresh();
+    };
+    showPopover ("instrumentos", "Tus instrumentos VST3 / AU", std::move (panel), anchor);
+}
+
+void MidiSkyEditor::openPianoRoll (File f)
+{
+    clipPlayer.stop();
+    if (rollWindow == nullptr)
+    {
+        rollWindow = std::make_unique<PianoRollWindow> (ctx, proc.uiKeyboard, look);
+        Component::SafePointer<MidiSkyEditor> safe (this);
+        rollWindow->onClose = [safe]
+        {
+            MessageManager::callAsync ([safe] { if (auto* e = safe.getComponent()) e->rollWindow.reset(); });
+        };
+    }
+    closePopover();
+    rollWindow->open (f);
+}
+
+void MidiSkyEditor::newMidiFile()
+{
+    // Un MIDI vacío de 4 compases, con el tempo del metrónomo
+    auto dir = MidiRecorder::folder();
+    dir.createDirectory();
+    auto file = dir.getNonexistentChildFile ("Midi Cat " + Time::getCurrentTime().formatted ("%Y-%m-%d %H.%M.%S"), ".mid", false);
+    MidiMessageSequence seq;
+    seq.addEvent (MidiMessage::tempoMetaEvent ((int) std::llround (60000000.0 / jmax (20.0f, prefs->metroBpm))), 0.0);
+    seq.addEvent (MidiMessage::timeSignatureMetaEvent (prefs->metroBeats, 4), 0.0);
+    seq.addEvent (MidiMessage::textMetaEvent (3, "Midi Cat"), 0.0);
+    MidiFile mf;
+    mf.setTicksPerQuarterNote (960);
+    mf.addTrack (seq);
+    {
+        FileOutputStream os (file);
+        if (! os.openedOk()) return;
+        mf.writeTo (os, 1);
+    }
+    openPianoRoll (file);
+}
+
+void MidiSkyEditor::openHostedWindow()
+{
+    if (proc.host == nullptr || ! proc.host->hasInstrument()) return;
+    if (hostedWindow != nullptr) { hostedWindow->setVisible (true); hostedWindow->toFront (true); return; }
+    auto* inst = proc.host->instance();
+    if (inst == nullptr) return;
+    Component* ed = inst->hasEditor() ? inst->createEditorIfNeeded() : nullptr;
+    if (ed == nullptr) ed = new GenericAudioProcessorEditor (*inst);
+    closePopover();
+    hostedWindow = std::make_unique<HostedWindow> (proc.host->instrumentName(), ed, vis.pal.body2);
+    Component::SafePointer<MidiSkyEditor> safe (this);
+    hostedWindow->onClose = [safe]
+    {
+        MessageManager::callAsync ([safe] { if (auto* e = safe.getComponent()) e->hostedWindow.reset(); });
+    };
+}
+
+void MidiSkyEditor::saveLayoutPreset (const String& name)
+{
+    LayoutPreset l;
+    l.name = name;
+    for (auto* s : sections())
+    {
+        auto f = prefs->floats[s->id];
+        f.floating = s->floating;
+        if (s->floating)
+            if (auto* w = windows[s->id].get())
+            {
+                f.collapsed = w->shell().isCollapsed();
+                if (! f.collapsed) f.bounds = w->getBounds();
+            }
+        l.floats[s->id] = f;
+    }
+    l.transparent = prefs->transparent;
+    l.hideParams = prefs->hideParams;
+    l.editorW = getWidth();
+    l.editorH = getHeight();
+    bool replaced = false;
+    for (auto& e : prefs->layouts) if (e.name == name) { e = l; replaced = true; }
+    if (! replaced) prefs->layouts.push_back (l);
+    prefs->save (false);
+}
+
+void MidiSkyEditor::applyLayoutPreset (const LayoutPreset& l)
+{
+    closePopover();
+    for (auto* s : sections())
+        if (s->floating) dock (*s, false);
+    prefs->floats = l.floats;
+    prefs->transparent = l.transparent;
+    prefs->hideParams = l.hideParams;
+    vis.transparent = l.transparent;
+    vis.hideParams = l.hideParams;
+    prefs->save (false);
+    rail.transpBtn.setActive (l.transparent);
+    rail.hideBtn.setIcon (l.hideParams ? "eye" : "eyeoff");
+    for (auto* s : sections())
+    {
+        auto it = prefs->floats.find (s->id);
+        if (it != prefs->floats.end() && it->second.floating) detach (*s, false);
+    }
+    for (auto* s : sections()) s->refreshControls();
+    rail.resized();
+    if (l.editorW > 100 && l.editorH > 100) setSize (l.editorW, l.editorH);
+    resized();
+    repaint();
+}
+
+//==============================================================================
+void ClipPlayer::play (const File& f)
+{
+    stop();
+    MidiClip clip;
+    if (! clip.load (f)) return;
+    events.clear();
+    const double secPerBeat = 60.0 / jmax (1.0, clip.bpm);
+    for (auto& n : clip.notes)
+    {
+        events.push_back ({ n.start * secPerBeat, n.note, (float) n.velocity / 127.0f, true });
+        events.push_back ({ jmax (n.start + 0.01, n.end) * secPerBeat - 0.001, n.note, 0.0f, false });
+    }
+    std::sort (events.begin(), events.end(), [] (const Ev& a, const Ev& b) { return a.t < b.t || (a.t == b.t && ! a.on && b.on); });
+    next = 0;
+    held.fill (0);
+    startMs = Time::getMillisecondCounterHiRes() + 60.0;
+    startTimer (2);
+}
+
+void ClipPlayer::stop()
+{
+    stopTimer();
+    for (int n = 0; n < 128; ++n)
+        while (held[(size_t) n] > 0) { state.noteOff (1, n, 0.0f); --held[(size_t) n]; }
+}
+
+void ClipPlayer::hiResTimerCallback()
+{
+    const double t = (Time::getMillisecondCounterHiRes() - startMs) / 1000.0;
+    while (next < events.size() && events[next].t <= t)
+    {
+        const auto& e = events[next++];
+        if (e.on) { state.noteOn (1, e.note, jmax (0.05f, e.vel)); ++held[(size_t) e.note]; }
+        else if (held[(size_t) e.note] > 0) { state.noteOff (1, e.note, 0.0f); --held[(size_t) e.note]; }
+    }
+    if (next >= events.size()) stopTimer();
+}
+
+HostedWindow::HostedWindow (const String& name, Component* editor, Colour bg)
+    : DocumentWindow (name, bg, DocumentWindow::closeButton | DocumentWindow::minimiseButton)
+{
+    setUsingNativeTitleBar (true);
+    setContentOwned (editor, true);
+    if (auto* ape = dynamic_cast<AudioProcessorEditor*> (editor))
+        setResizable (ape->isResizable(), false);
+    setAlwaysOnTop (false);
+    centreWithSize (getWidth(), getHeight());
+    setVisible (true);
+    toFront (true);
+}
+
+//==============================================================================
+void MidiSkyEditor::previewChord (int index, float velocity)
 {
     if (index < 0 || index >= (int) vis.diatonic.size()) return;
     stopPreview();
@@ -1260,8 +1661,9 @@ void MidiSkyEditor::previewChord (int index)
         previewNotes.push_back (n);
         prev = n;
     }
-    for (auto n : previewNotes) proc.uiKeyboard.noteOn (1, n, 0.68f);
-    previewOffAt = Time::getMillisecondCounterHiRes() + 1100.0;
+    for (auto n : previewNotes) proc.uiKeyboard.noteOn (1, n, velocity);
+    previewStartedAt = Time::getMillisecondCounterHiRes();
+    previewOffAt = previewStartedAt + 30000.0;   // se apaga al soltar el mouse
 }
 
 void MidiSkyEditor::stopPreview()

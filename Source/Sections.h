@@ -57,7 +57,8 @@ class DegreesSection : public Section, private Animated
 {
 public:
     explicit DegreesSection (UiContext& c);
-    std::function<void (int)> onPreview;
+    std::function<void (int, float)> onPreview;   // grado y fuerza (más abajo = más fuerte, como en FL)
+    std::function<void()> onRelease;              // se soltó el mouse (el acorde dura lo que lo dejes apretado)
     void mouseDown (const juce::MouseEvent&) override;
     void mouseUp (const juce::MouseEvent&) override;
     void mouseMove (const juce::MouseEvent&) override;

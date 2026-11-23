@@ -2,6 +2,10 @@
 
 #include <JuceHeader.h>
 #include "PianoEngine.h"
+#include "Metronome.h"
+#include "Recorder.h"
+#include "PluginHost.h"
+#include "Style.h"
 
 //==============================================================================
 // Estado de las teclas, compartido sin bloqueos entre el hilo de audio y la interfaz.
@@ -28,7 +32,7 @@ public:
     ~MidiSkyProcessor() override = default;
 
     void prepareToPlay (double sampleRate, int samplesPerBlock) override;
-    void releaseResources() override {}
+    void releaseResources() override { if (host != nullptr) host->release(); }
     void reset() override { wasLatched = false; }
     bool isBusesLayoutSupported (const BusesLayout&) const override;
     void processBlock (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
@@ -65,7 +69,14 @@ public:
     std::atomic<double> currentRate { 44100.0 };
 
     // Tamaño de la ventana (se guarda con el proyecto)
-    std::atomic<int> editorW { 1200 }, editorH { 760 };
+    std::atomic<int> editorW { 1290 }, editorH { 760 };
+
+    // Metrónomo, grabadora e instrumentos propios (estos últimos solo en la app sola)
+    MetronomeSettings metroSettings;
+    Metronome metronome;
+    MidiRecorder recorder;
+    std::unique_ptr<PluginHost> host;
+    void applyPrefs();   // copia los ajustes guardados (metrónomo, grabadora) al audio
 
 private:
     PianoEngine piano;
@@ -74,8 +85,10 @@ private:
     std::atomic<float>* latencyMs = nullptr;
     std::atomic<float>* instrumentParam = nullptr;
     std::atomic<float>* sustainParam = nullptr;
-    juce::MidiBuffer pedalScratch;
+    juce::MidiBuffer pedalScratch, mouseScratch;
+    juce::SharedResourcePointer<Prefs> prefs;
     bool wasLatched = false;
+    bool wasHosted = false;
 
     // Compensación de latencia: las notas de afuera se retrasan N ms (sonido y luces juntos)
     juce::MidiBuffer delayQueue, delayScratch;

@@ -99,6 +99,29 @@ MidiSkyProcessor::MidiSkyProcessor()
     latencyMs = apvts.getRawParameterValue ("latency");
     instrumentParam = apvts.getRawParameterValue ("instrument");
     sustainParam = apvts.getRawParameterValue ("sustain");
+
+    if (wrapperType == wrapperType_Standalone)
+        host = std::make_unique<PluginHost>();
+    applyPrefs();
+   #if MIDISKY_DEMO
+    if (juce::SystemStats::getEnvironmentVariable ("MIDISKY_METRO", "").isNotEmpty())
+    {
+        metroSettings.on.store (true);
+        metroSettings.sound.store (juce::SystemStats::getEnvironmentVariable ("MIDISKY_METRO", "0").getIntValue());
+        metroSettings.followHost.store (false);
+    }
+   #endif
+}
+
+void MidiSkyProcessor::applyPrefs()
+{
+    metroSettings.bpm.store (prefs->metroBpm);
+    metroSettings.beats.store (prefs->metroBeats);
+    metroSettings.sound.store (prefs->metroSound);
+    metroSettings.volumeDb.store (prefs->metroVolume);
+    metroSettings.followHost.store (prefs->metroFollowHost);
+    recorder.countIn.store (prefs->countIn);
+    recorder.recordMouse.store (prefs->recordMouse);
 }
 
 bool MidiSkyProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
@@ -107,8 +130,11 @@ bool MidiSkyProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
     return out == juce::AudioChannelSet::stereo() || out == juce::AudioChannelSet::mono();
 }
 
-void MidiSkyProcessor::prepareToPlay (double sampleRate, int)
+void MidiSkyProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
+    metronome.prepare (sampleRate);
+    mouseScratch.ensureSize (4096);
+    if (host != nullptr) host->prepare (sampleRate, samplesPerBlock);
     currentRate.store (sampleRate);
     delayQueue.ensureSize (16384);
     delayScratch.ensureSize (16384);
@@ -176,24 +202,30 @@ void MidiSkyProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mid
         piano.allNotesOff();
     }
 
-    uiKeyboard.processNextMidiBuffer (midi, 0, n, true);
+    // Lo tocado con el mouse va aparte (para poder grabarlo o no)
+    mouseScratch.clear();
+    uiKeyboard.processNextMidiBuffer (mouseScratch, 0, n, true);
 
     // Pedal en pantalla: sostiene como un pedal de verdad (y mientras está puesto ignora el pedal físico)
     const bool latch = sustainParam->load() > 0.5f;
-    if (latch || latch != wasLatched)
+    pedalScratch.clear();
+    if (latch != wasLatched)
+        pedalScratch.addEvent (juce::MidiMessage::controllerEvent (1, 64, latch ? 127 : 0), 0);
+    wasLatched = latch;
+    for (const auto meta : midi)
     {
-        pedalScratch.clear();
-        if (latch != wasLatched)
-            pedalScratch.addEvent (juce::MidiMessage::controllerEvent (1, 64, latch ? 127 : 0), 0);
-        for (const auto meta : midi)
-        {
-            const auto m = meta.getMessage();
-            if (latch && m.isController() && m.getControllerNumber() == 64) continue;
-            pedalScratch.addEvent (m, meta.samplePosition);
-        }
-        midi.swapWith (pedalScratch);
-        wasLatched = latch;
+        const auto m = meta.getMessage();
+        if (latch && m.isController() && m.getControllerNumber() == 64) continue;
+        pedalScratch.addEvent (m, meta.samplePosition);
     }
+
+    // Grabadora: lo que llega del teclado (y el pedal), y si se quiere, lo del mouse
+    const bool metroOn = metroSettings.on.load();
+    recorder.process (pedalScratch, mouseScratch, n, metronome, metroOn, getSampleRate());
+
+    for (const auto meta : mouseScratch)
+        pedalScratch.addEvent (meta.getMessage(), meta.samplePosition);
+    midi.swapWith (pedalScratch);
     piano.setInstrument ((int) instrumentParam->load());
 
     for (const auto meta : midi)
@@ -206,10 +238,14 @@ void MidiSkyProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mid
         wasOn = on;
     }
 
-    if (! on)
-        return;
-
-    piano.render (buffer, midi);
+    if (on)
+    {
+        // Con un instrumento tuyo cargado (app sola), suena ese; si no, el piano de Midi Cat
+        const bool hosted = host != nullptr && host->hasInstrument() && host->render (buffer, midi, n);
+        if (hosted != wasHosted) { piano.allNotesOff(); wasHosted = hosted; }
+        if (! hosted)
+            piano.render (buffer, midi);
+    }
 
     gainSmooth.setTargetValue (juce::Decibels::decibelsToGain (volume->load(), -47.9f));
     const int chans = buffer.getNumChannels();
@@ -225,6 +261,9 @@ void MidiSkyProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mid
             d[s] = ax < 0.8f ? x : std::copysign (0.8f + 0.2f * std::tanh ((ax - 0.8f) / 0.2f), x);
         }
     }
+
+    // El metrónomo va aparte (su propio volumen)
+    metronome.process (buffer, n, metroSettings, getPlayHead());
 }
 
 //==============================================================================
@@ -239,17 +278,31 @@ void MidiSkyProcessor::getStateInformation (juce::MemoryBlock& dest)
     state.setProperty ("editorW", editorW.load(), nullptr);
     state.setProperty ("editorH", editorH.load(), nullptr);
     if (auto xml = state.createXml())
+    {
+        if (host != nullptr)
+            if (auto h = host->createState())
+                xml->addChildElement (h.release());
         copyXmlToBinary (*xml, dest);
+    }
 }
 
 void MidiSkyProcessor::setStateInformation (const void* data, int size)
 {
     if (auto xml = getXmlFromBinary (data, size))
     {
+        if (auto* h = xml->getChildByName ("HOSTED"))
+        {
+            if (host != nullptr) host->restoreState (*h);
+            xml->removeChildElement (h, true);
+        }
         auto tree = juce::ValueTree::fromXml (*xml);
         if (tree.hasType (apvts.state.getType()))
         {
-            editorW.store ((int) tree.getProperty ("editorW", 1200));
+            {
+                int w = (int) tree.getProperty ("editorW", 1290);
+                if (w == 1200 && (int) tree.getProperty ("editorH", 760) == 760) w = 1290;   // tamaño normal de antes → el de ahora
+                editorW.store (w);
+            }
             editorH.store ((int) tree.getProperty ("editorH", 760));
             apvts.replaceState (tree);
         }

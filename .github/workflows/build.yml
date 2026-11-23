@@ -50,10 +50,10 @@ jobs:
       - name: Empaquetar
         run: |
           ART=build/MidiCat_artefacts/Release
-          mkdir -p dist/Midi-Cat-Mac
-          cp -R "$ART/VST3/Midi Cat.vst3" "$ART/AU/Midi Cat.component" "$ART/Standalone/Midi Cat.app" dist/Midi-Cat-Mac/
-          cp packaging/LEEME-Mac.txt dist/Midi-Cat-Mac/LEEME.txt
-          cd dist && ditto -c -k --sequesterRsrc --keepParent Midi-Cat-Mac Midi-Cat-Mac.zip
+          mkdir -p dist/MidiCat-Mac
+          cp -R "$ART/VST3/Midi Cat.vst3" "$ART/AU/Midi Cat.component" "$ART/Standalone/Midi Cat.app" dist/MidiCat-Mac/
+          cp packaging/LEEME-Mac.txt dist/MidiCat-Mac/LEEME.txt
+          cd dist && ditto -c -k --sequesterRsrc --keepParent MidiCat-Mac MidiCat-Mac.zip
 
       - name: Crear el instalador (.pkg)
         run: |
@@ -69,15 +69,15 @@ jobs:
           sed -i '' -e '/<key>BundleIsRelocatable<\/key>/{n;s/<true\/>/<false\/>/;}' comp.plist
           grep -A1 BundleIsRelocatable comp.plist || true
           pkgbuild --root "$ROOT" --component-plist comp.plist --scripts packaging/mac/scripts \
-            --identifier com.joeyocn.midicat --version 1.3.0 --install-location / dist/Midi-Cat-Instalador-Mac.pkg
+            --identifier com.joeyocn.midicat --version 1.3.1 --install-location / dist/MidiCat-Instalador-Mac.pkg
           ls -la dist
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Midi-Cat-Mac
+          name: MidiCat-Mac
           path: |
-            dist/Midi-Cat-Mac.zip
-            dist/Midi-Cat-Instalador-Mac.pkg
+            dist/MidiCat-Mac.zip
+            dist/MidiCat-Instalador-Mac.pkg
 
   windows:
     name: Windows (VST3 y app)
@@ -105,11 +105,11 @@ jobs:
         shell: pwsh
         run: |
           $art = "build\MidiCat_artefacts\Release"
-          New-Item -ItemType Directory -Force -Path dist\Midi-Cat-Windows | Out-Null
-          Copy-Item -Recurse "$art\VST3\Midi Cat.vst3" dist\Midi-Cat-Windows\
-          Copy-Item "$art\Standalone\Midi Cat.exe" dist\Midi-Cat-Windows\
-          Copy-Item packaging\LEEME-Windows.txt dist\Midi-Cat-Windows\LEEME.txt
-          Compress-Archive -Path dist\Midi-Cat-Windows -DestinationPath dist\Midi-Cat-Windows.zip
+          New-Item -ItemType Directory -Force -Path dist\MidiCat-Windows | Out-Null
+          Copy-Item -Recurse "$art\VST3\Midi Cat.vst3" dist\MidiCat-Windows\
+          Copy-Item "$art\Standalone\Midi Cat.exe" dist\MidiCat-Windows\
+          Copy-Item packaging\LEEME-Windows.txt dist\MidiCat-Windows\LEEME.txt
+          Compress-Archive -Path dist\MidiCat-Windows -DestinationPath dist\MidiCat-Windows.zip
 
       - name: Crear el instalador
         shell: pwsh
@@ -121,10 +121,10 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Midi-Cat-Windows
+          name: MidiCat-Windows
           path: |
-            dist/Midi-Cat-Windows.zip
-            dist/Midi-Cat-Instalador-Windows.exe
+            dist/MidiCat-Windows.zip
+            dist/MidiCat-Instalador-Windows.exe
 
   publicar:
     name: Publicar descargas
@@ -143,7 +143,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release delete ultima-version --yes --cleanup-tag -R "${{ github.repository }}" || true
-          gh release create ultima-version dist/Midi-Cat-Instalador-Windows.exe dist/Midi-Cat-Instalador-Mac.pkg dist/Midi-Cat-Mac.zip dist/Midi-Cat-Windows.zip \
+          gh release create ultima-version dist/MidiCat-Instalador-Windows.exe dist/MidiCat-Instalador-Mac.pkg dist/MidiCat-Mac.zip dist/MidiCat-Windows.zip \
             -R "${{ github.repository }}" --target "${{ github.sha }}" \
             --title "Midi Cat · última versión" \
-            --notes "Lo más fácil: descarga el instalador. Windows: Midi-Cat-Instalador-Windows.exe. Mac: Midi-Cat-Instalador-Mac.pkg. Ábrelo, dale Siguiente y listo; al abrir Ableton, Midi Cat ya aparece en tus plugins (y quita solo la versión vieja que se llamaba MidiSky). Los .zip son la versión para copiar a mano."
+            --notes "Lo más fácil: descarga el instalador. Windows: MidiCat-Instalador-Windows.exe. Mac: MidiCat-Instalador-Mac.pkg. Ábrelo, dale Siguiente y listo; al abrir Ableton, Midi Cat ya aparece en tus plugins (y quita solo la versión vieja que se llamaba MidiSky). Los .zip son la versión para copiar a mano."

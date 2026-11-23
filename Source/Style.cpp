@@ -223,6 +223,39 @@ Colour Skin::noteTag (int index) const
 }
 
 //==============================================================================
+static std::map<String, FloatState> readFloats (const XmlElement& xml)
+{
+    std::map<String, FloatState> out;
+    for (auto* e : xml.getChildIterator())
+    {
+        FloatState f;
+        f.floating = e->getBoolAttribute ("floating");
+        f.onTop = e->getBoolAttribute ("onTop", true);
+        f.collapsed = e->getBoolAttribute ("collapsed", false);
+        f.bounds = { e->getIntAttribute ("x"), e->getIntAttribute ("y"), e->getIntAttribute ("w"), e->getIntAttribute ("h") };
+        out[e->getStringAttribute ("id")] = f;
+    }
+    return out;
+}
+
+static std::unique_ptr<XmlElement> writeFloats (const std::map<String, FloatState>& floats)
+{
+    auto xml = std::make_unique<XmlElement> ("FLOATS");
+    for (auto& [id, f] : floats)
+    {
+        auto* e = xml->createNewChildElement ("F");
+        e->setAttribute ("id", id);
+        e->setAttribute ("floating", f.floating);
+        e->setAttribute ("onTop", f.onTop);
+        e->setAttribute ("collapsed", f.collapsed);
+        e->setAttribute ("x", f.bounds.getX());
+        e->setAttribute ("y", f.bounds.getY());
+        e->setAttribute ("w", f.bounds.getWidth());
+        e->setAttribute ("h", f.bounds.getHeight());
+    }
+    return xml;
+}
+
 Prefs::Prefs()
 {
     PropertiesFile::Options o;
@@ -268,17 +301,63 @@ Prefs::Prefs()
     }
 
     if (auto xml = file->getXmlValue ("floats"))
-    {
+        floats = readFloats (*xml);
+
+    metroBpm        = jlimit (20.0f, 300.0f, (float) file->getDoubleValue ("metroBpm", 100.0));
+    metroBeats      = jlimit (1, 12, file->getIntValue ("metroBeats", 4));
+    metroSound      = jlimit (0, 5, file->getIntValue ("metroSound", 0));
+    metroVolume     = jlimit (-40.0f, 6.0f, (float) file->getDoubleValue ("metroVolume", -8.0));
+    metroFollowHost = file->getBoolValue ("metroFollowHost", true);
+    countIn         = file->getBoolValue ("countIn", true);
+    recordMouse     = file->getBoolValue ("recordMouse", true);
+
+    if (auto xml = file->getXmlValue ("themes"))
         for (auto* e : xml->getChildIterator())
         {
-            FloatState f;
-            f.floating = e->getBoolAttribute ("floating");
-            f.onTop = e->getBoolAttribute ("onTop", true);
-            f.collapsed = e->getBoolAttribute ("collapsed", false);
-            f.bounds = { e->getIntAttribute ("x"), e->getIntAttribute ("y"), e->getIntAttribute ("w"), e->getIntAttribute ("h") };
-            floats[e->getStringAttribute ("id")] = f;
+            ThemePreset t;
+            t.name = e->getStringAttribute ("name");
+            t.look = e->getStringAttribute ("look", "campo");
+            t.dayNight = jlimit (0, 2, e->getIntAttribute ("dayNight"));
+            t.keyStyle = jlimit (-1, 3, e->getIntAttribute ("keyStyle", -1));
+            auto col = [e] (const char* k) { const auto v = e->getStringAttribute (k); return v.isEmpty() ? Colour() : Colour::fromString (v); };
+            t.uiTint = col ("uiTint"); t.uiAccent = col ("uiAccent");
+            t.keyLit = col ("keyLit"); t.keyWhite = col ("keyWhite"); t.keyBlack = col ("keyBlack");
+            t.rainbow = e->getBoolAttribute ("rainbow");
+            if (t.name.isNotEmpty()) themes.push_back (t);
         }
-    }
+
+    if (auto xml = file->getXmlValue ("layouts"))
+        for (auto* e : xml->getChildIterator())
+        {
+            LayoutPreset l;
+            l.name = e->getStringAttribute ("name");
+            l.transparent = e->getBoolAttribute ("transparent");
+            l.hideParams = e->getBoolAttribute ("hideParams");
+            l.editorW = e->getIntAttribute ("editorW");
+            l.editorH = e->getIntAttribute ("editorH");
+            if (auto* fx = e->getChildByName ("FLOATS")) l.floats = readFloats (*fx);
+            if (l.name.isNotEmpty()) layouts.push_back (l);
+        }
+}
+
+ThemePreset Prefs::captureTheme (const String& name) const
+{
+    ThemePreset t;
+    t.name = name;
+    t.look = look; t.dayNight = dayNight; t.keyStyle = keyStyle;
+    t.uiTint = uiTint; t.uiAccent = uiAccent;
+    t.keyLit = keyLit; t.keyWhite = keyWhite; t.keyBlack = keyBlack;
+    t.rainbow = rainbow;
+    return t;
+}
+
+void Prefs::applyTheme (const ThemePreset& t)
+{
+    look = t.look; dayNight = t.dayNight; keyStyle = t.keyStyle;
+    uiTint = t.uiTint; uiAccent = t.uiAccent;
+    keyLit = t.keyLit; keyWhite = t.keyWhite; keyBlack = t.keyBlack;
+    rainbow = t.rainbow;
+    save();
 }
 
 Prefs::~Prefs()
@@ -308,20 +387,44 @@ void Prefs::save (bool notify)
     file->setValue ("transparent", transparent);
     file->setValue ("lowLatencyDone", lowLatencyDone);
 
-    XmlElement xml ("FLOATS");
-    for (auto& [id, f] : floats)
+    auto xml = writeFloats (floats);
+    file->setValue ("floats", xml.get());
+
+    file->setValue ("metroBpm", (double) metroBpm);
+    file->setValue ("metroBeats", metroBeats);
+    file->setValue ("metroSound", metroSound);
+    file->setValue ("metroVolume", (double) metroVolume);
+    file->setValue ("metroFollowHost", metroFollowHost);
+    file->setValue ("countIn", countIn);
+    file->setValue ("recordMouse", recordMouse);
+
+    XmlElement tx ("THEMES");
+    for (auto& t : themes)
     {
-        auto* e = xml.createNewChildElement ("F");
-        e->setAttribute ("id", id);
-        e->setAttribute ("floating", f.floating);
-        e->setAttribute ("onTop", f.onTop);
-        e->setAttribute ("collapsed", f.collapsed);
-        e->setAttribute ("x", f.bounds.getX());
-        e->setAttribute ("y", f.bounds.getY());
-        e->setAttribute ("w", f.bounds.getWidth());
-        e->setAttribute ("h", f.bounds.getHeight());
+        auto* e = tx.createNewChildElement ("T");
+        auto putC = [e] (const char* k, Colour c) { e->setAttribute (k, c.isTransparent() ? String() : c.toString()); };
+        e->setAttribute ("name", t.name);
+        e->setAttribute ("look", t.look);
+        e->setAttribute ("dayNight", t.dayNight);
+        e->setAttribute ("keyStyle", t.keyStyle);
+        putC ("uiTint", t.uiTint); putC ("uiAccent", t.uiAccent);
+        putC ("keyLit", t.keyLit); putC ("keyWhite", t.keyWhite); putC ("keyBlack", t.keyBlack);
+        e->setAttribute ("rainbow", t.rainbow);
     }
-    file->setValue ("floats", &xml);
+    file->setValue ("themes", &tx);
+
+    XmlElement lx ("LAYOUTS");
+    for (auto& l : layouts)
+    {
+        auto* e = lx.createNewChildElement ("L");
+        e->setAttribute ("name", l.name);
+        e->setAttribute ("transparent", l.transparent);
+        e->setAttribute ("hideParams", l.hideParams);
+        e->setAttribute ("editorW", l.editorW);
+        e->setAttribute ("editorH", l.editorH);
+        e->addChildElement (writeFloats (l.floats).release());
+    }
+    file->setValue ("layouts", &lx);
     if (notify) sendChangeMessage();
 }
 

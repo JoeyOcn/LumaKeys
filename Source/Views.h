@@ -12,7 +12,8 @@ struct Vis
     std::array<float, 128> flash {};
     std::array<float, 128> level {};     // brillo animado de cada tecla (0..1)
     std::array<float, 12> pcGlow {};     // brillo animado de cada nota en el círculo
-    std::vector<int> active;             // notas sonando (teclas abajo + pedal), ordenadas
+    std::vector<int> active;             // el acorde de ahora (lo que se nombra), ordenado
+    std::vector<int> sounding;           // todo lo que suena (teclas abajo + pedal), ordenado
     uint16_t activeMask = 0;
     int lowest = -1;
     bool pedal = false;
@@ -175,8 +176,14 @@ public:
     bool lightOnDark = false;    // sobre fondos transparentes
     juce::Colour swatch;         // un puntito de color junto al texto
     float radiusScale = 0.3f;
+    std::function<void()> onMore;    // flechita de ajustes (abajo a la derecha, o clic derecho)
+    juce::Colour activeColour;       // color cuando está prendido (si no, el acento)
+    juce::Colour iconColour;         // color del ícono cuando está apagado (si no, el normal)
+    void setFlash (float f) { if (std::abs (f - flash) > 0.01f) { flash = f; repaint(); } }
 
 private:
+    bool inMoreZone (juce::Point<int>) const;
+    float flash = 0.0f;
     bool stepAnimation (float dt) override;
     UiContext& ctx;
     juce::String iconId, label;
@@ -216,6 +223,7 @@ public:
     void setShowReset (bool s) { if (s != showReset) { showReset = s; resized(); } }
 
     FieldButton midi, key, scale, latency;
+    PushButton recBtn, metroBtn;
     PushButton dayBtn, colourBtn, transpBtn, splitBtn, windowsBtn, resetBtn, hideBtn, menuBtn;
     float k = 1.0f;
 
@@ -283,12 +291,17 @@ public:
 private:
     juce::Rectangle<float> lookTile (int i) const;
     juce::Rectangle<float> paletteChip (int i) const;
+    juce::Rectangle<float> themeChip (int i) const;
     void refreshPicker();
+    void setNaming (bool n);
     UiContext& ctx;
     Prefs& prefs;
     Segmented mode, target;
     ColourPicker picker;
-    PushButton resetBtn;
+    PushButton resetBtn, saveThemeBtn, confirmBtn, cancelBtn;
+    juce::TextEditor nameEditor;
+    bool naming = false;
+    int confirmDelete = -1;
     juce::Rectangle<int> looksArea, chipsArea;
 };
 

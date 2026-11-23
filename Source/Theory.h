@@ -70,6 +70,13 @@ namespace theory
     Chord detectChord (uint16_t pcMask, int bassPc, const KeySig& sig, bool latin);
 
     juce::String intervalName (int semitones);
+    // Intervalo entre la nota más grave y la siguiente nota distinta (ignora octavas repetidas)
+    inline int firstInterval (const std::vector<int>& sorted)
+    {
+        if (sorted.empty()) return 0;
+        for (auto n : sorted) if ((n - sorted.front()) % 12 != 0) return n - sorted.front();
+        return 12;
+    }
 
     // Grado romano y función dentro de la tonalidad. Vacío si no aplica.
     struct Degree { juce::String roman; juce::String function; bool inScale = false; };

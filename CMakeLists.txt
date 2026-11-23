@@ -10,7 +10,7 @@ if(APPLE)
     endif()
 endif()
 
-project(MidiCat VERSION 1.3.0 LANGUAGES C CXX)
+project(MidiCat VERSION 1.3.1 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -59,7 +59,12 @@ target_sources(MidiCat PRIVATE
     Source/Views.cpp
     Source/Sections.cpp
     Source/Floating.cpp
-    Source/Style.cpp)
+    Source/Style.cpp
+    Source/Metronome.cpp
+    Source/Recorder.cpp
+    Source/PluginHost.cpp
+    Source/Extras.cpp
+    Source/PianoRoll.cpp)
 
 file(GLOB MIDISKY_PIANO_SAMPLES CONFIGURE_DEPENDS
     ${CMAKE_CURRENT_SOURCE_DIR}/assets/piano/*.ogg
@@ -93,7 +98,11 @@ target_compile_definitions(MidiCat PUBLIC
     JUCE_VST3_CAN_REPLACE_VST2=0
     JUCE_DISPLAY_SPLASH_SCREEN=0
     JUCE_USE_OGGVORBIS=1
-    JUCE_MODAL_LOOPS_PERMITTED=0)
+    JUCE_MODAL_LOOPS_PERMITTED=0
+    JUCE_PLUGINHOST_VST3=1
+    JUCE_PLUGINHOST_AU=1
+    JUCE_PLUGINHOST_LADSPA=0
+    JUCE_PLUGINHOST_LV2=0)
 
 target_link_libraries(MidiCat
     PRIVATE

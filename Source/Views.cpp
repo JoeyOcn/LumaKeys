@@ -256,6 +256,120 @@ namespace draw
             p.lineTo (a);
             p.lineTo (a + Point<float> (0.0f, -s * 0.17f));
         }
+        else if (name == "metro")
+        {
+            // metrónomo de péndulo
+            p.startNewSubPath (P (8.5f, 20)); p.lineTo (P (10.6f, 4.5f)); p.lineTo (P (13.4f, 4.5f)); p.lineTo (P (15.5f, 20)); p.closeSubPath();
+            p.startNewSubPath (P (12, 16)); p.lineTo (P (17.5f, 7.5f));
+            p.startNewSubPath (P (9.6f, 14)); p.lineTo (P (14.4f, 14));
+        }
+        else if (name == "rec")
+        {
+            const auto cc = P (12, 12);
+            g.fillEllipse (cc.x - s * 0.22f, cc.y - s * 0.22f, s * 0.44f, s * 0.44f);
+            return;
+        }
+        else if (name == "stop")
+        {
+            g.fillRoundedRectangle (Rectangle<float> (P (7, 7), P (17, 17)), s * 0.06f);
+            return;
+        }
+        else if (name == "play")
+        {
+            p.startNewSubPath (P (8, 5.5f)); p.lineTo (P (18.5f, 12)); p.lineTo (P (8, 18.5f)); p.closeSubPath();
+            g.fillPath (p);
+            g.strokePath (p, st);
+            return;
+        }
+        else if (name == "folder")
+        {
+            p.startNewSubPath (P (3.5f, 7)); p.lineTo (P (3.5f, 18.5f)); p.lineTo (P (20.5f, 18.5f)); p.lineTo (P (20.5f, 8.5f));
+            p.lineTo (P (11.5f, 8.5f)); p.lineTo (P (9.5f, 5.5f)); p.lineTo (P (3.5f, 5.5f)); p.closeSubPath();
+        }
+        else if (name == "trash")
+        {
+            p.startNewSubPath (P (4.5f, 7)); p.lineTo (P (19.5f, 7));
+            p.startNewSubPath (P (9.5f, 7)); p.lineTo (P (10, 4.5f)); p.lineTo (P (14, 4.5f)); p.lineTo (P (14.5f, 7));
+            p.startNewSubPath (P (6.5f, 7)); p.lineTo (P (7.5f, 20)); p.lineTo (P (16.5f, 20)); p.lineTo (P (17.5f, 7));
+            p.startNewSubPath (P (10.5f, 11)); p.lineTo (P (10.5f, 16.5f));
+            p.startNewSubPath (P (13.5f, 11)); p.lineTo (P (13.5f, 16.5f));
+        }
+        else if (name == "plug")
+        {
+            p.startNewSubPath (P (9, 3.5f)); p.lineTo (P (9, 8));
+            p.startNewSubPath (P (15, 3.5f)); p.lineTo (P (15, 8));
+            p.startNewSubPath (P (6, 8)); p.lineTo (P (18, 8)); p.lineTo (P (18, 12));
+            p.quadraticTo (P (18, 17), P (12, 17)); p.quadraticTo (P (6, 17), P (6, 12)); p.closeSubPath();
+            p.startNewSubPath (P (12, 17)); p.lineTo (P (12, 21));
+        }
+        else if (name == "save")
+        {
+            p.startNewSubPath (P (5, 4.5f)); p.lineTo (P (16.5f, 4.5f)); p.lineTo (P (19.5f, 7.5f)); p.lineTo (P (19.5f, 19.5f));
+            p.lineTo (P (4.5f, 19.5f)); p.lineTo (P (4.5f, 4.5f)); p.closeSubPath();
+            p.startNewSubPath (P (8, 4.5f)); p.lineTo (P (8, 9)); p.lineTo (P (15, 9)); p.lineTo (P (15, 4.5f));
+            p.addRoundedRectangle (Rectangle<float> (P (8, 13), P (16, 19.5f)), s * 0.02f);
+        }
+        else if (name == "pencil")
+        {
+            p.startNewSubPath (P (5, 19)); p.lineTo (P (6, 15)); p.lineTo (P (16, 5)); p.lineTo (P (19, 8)); p.lineTo (P (9, 18)); p.closeSubPath();
+            p.startNewSubPath (P (14, 7)); p.lineTo (P (17, 10));
+        }
+        else if (name == "cursor")
+        {
+            p.startNewSubPath (P (6, 4)); p.lineTo (P (6, 18)); p.lineTo (P (10, 14.5f)); p.lineTo (P (12.5f, 20)); p.lineTo (P (15, 19));
+            p.lineTo (P (12.5f, 13.5f)); p.lineTo (P (17.5f, 13.5f)); p.closeSubPath();
+        }
+        else if (name == "knife")
+        {
+            p.startNewSubPath (P (4, 20)); p.lineTo (P (16, 8)); p.lineTo (P (19, 5)); p.lineTo (P (20, 9)); p.lineTo (P (8, 21)); p.closeSubPath();
+            p.startNewSubPath (P (12, 4)); p.lineTo (P (12, 6.5f));
+            p.startNewSubPath (P (3.5f, 12)); p.lineTo (P (6, 12));
+        }
+        else if (name == "eraser")
+        {
+            p.startNewSubPath (P (9, 19.5f)); p.lineTo (P (4, 14.5f)); p.lineTo (P (13, 5.5f)); p.lineTo (P (20, 12.5f)); p.lineTo (P (13, 19.5f)); p.closeSubPath();
+            p.startNewSubPath (P (8, 10.5f)); p.lineTo (P (15, 17.5f));
+            p.startNewSubPath (P (13, 19.5f)); p.lineTo (P (20, 19.5f));
+        }
+        else if (name == "undo" || name == "redo")
+        {
+            const bool u = name == "undo";
+            auto X = [u] (float x) { return u ? x : 24.0f - x; };
+            p.startNewSubPath (P (X (5), 10)); p.lineTo (P (X (14), 10)); p.quadraticTo (P (X (20), 10), P (X (20), 15)); p.quadraticTo (P (X (20), 19.5f), P (X (14), 19.5f)); p.lineTo (P (X (10), 19.5f));
+            p.startNewSubPath (P (X (9), 6)); p.lineTo (P (X (5), 10)); p.lineTo (P (X (9), 14));
+        }
+        else if (name == "magnet")
+        {
+            p.startNewSubPath (P (6, 4.5f)); p.lineTo (P (6, 12)); p.quadraticTo (P (6, 19.5f), P (12, 19.5f)); p.quadraticTo (P (18, 19.5f), P (18, 12)); p.lineTo (P (18, 4.5f));
+            p.startNewSubPath (P (10, 4.5f)); p.lineTo (P (10, 12)); p.quadraticTo (P (10, 15.5f), P (12, 15.5f)); p.quadraticTo (P (14, 15.5f), P (14, 12)); p.lineTo (P (14, 4.5f));
+            p.startNewSubPath (P (6, 8)); p.lineTo (P (10, 8));
+            p.startNewSubPath (P (14, 8)); p.lineTo (P (18, 8));
+        }
+        else if (name == "quant")
+        {
+            for (float x : { 6.0f, 12.0f, 18.0f }) { p.startNewSubPath (P (x, 4)); p.lineTo (P (x, 20)); }
+            g.strokePath (p, PathStrokeType (st.getStrokeThickness() * 0.6f));
+            Path q;
+            q.addRoundedRectangle (Rectangle<float> (P (6, 9), P (12, 15)), s * 0.03f);
+            g.fillPath (q);
+            return;
+        }
+        else if (name == "export")
+        {
+            p.startNewSubPath (P (12, 15)); p.lineTo (P (12, 3.5f));
+            p.startNewSubPath (P (7.5f, 8)); p.lineTo (P (12, 3.5f)); p.lineTo (P (16.5f, 8));
+            p.startNewSubPath (P (5, 12)); p.lineTo (P (5, 20)); p.lineTo (P (19, 20)); p.lineTo (P (19, 12));
+        }
+        else if (name == "plus")  { p.startNewSubPath (P (12, 6)); p.lineTo (P (12, 18)); p.startNewSubPath (P (6, 12)); p.lineTo (P (18, 12)); }
+        else if (name == "minus") { p.startNewSubPath (P (6, 12)); p.lineTo (P (18, 12)); }
+        else if (name == "tap")
+        {
+            const auto cc = P (12, 12);
+            p.addEllipse (cc.x - s * 0.3f, cc.y - s * 0.3f, s * 0.6f, s * 0.6f);
+            g.strokePath (p, st);
+            g.fillEllipse (cc.x - s * 0.1f, cc.y - s * 0.1f, s * 0.2f, s * 0.2f);
+            return;
+        }
         else if (name == "grip")
         {
             for (float x : { 9.0f, 15.0f })
@@ -533,11 +647,19 @@ bool PushButton::stepAnimation (float dt)
 
 void PushButton::mouseDown (const MouseEvent&) { down = true; animate(); }
 
+bool PushButton::inMoreZone (Point<int> p) const
+{
+    // La flechita de abajo a la derecha abre los ajustes
+    return onMore != nullptr && p.x > getWidth() * 0.62f && p.y > getHeight() * 0.52f;
+}
+
 void PushButton::mouseUp (const MouseEvent& e)
 {
     down = false;
     animate();
-    if (getLocalBounds().contains (e.getPosition()) && onClick) onClick();
+    if (! getLocalBounds().contains (e.getPosition())) return;
+    if (onMore != nullptr && (e.mods.isPopupMenu() || inMoreZone (e.getPosition()))) { onMore(); return; }
+    if (onClick) onClick();
 }
 
 void PushButton::paint (Graphics& g)
@@ -549,9 +671,17 @@ void PushButton::paint (Graphics& g)
 
     if (framed)
     {
-        draw::button (g, b, pal, jmin (b.getHeight(), b.getWidth()) * radiusScale, press, active, hover);
+        Skin p2 = pal;
+        if (! activeColour.isTransparent()) { p2.accent = activeColour; p2.accentInk = Colours::white; }
+        draw::button (g, b, p2, jmin (b.getHeight(), b.getWidth()) * radiusScale, press, active, hover);
         content = b.withTrimmedBottom (2.5f).translated (0.0f, 2.5f * press);
-        if (active) col = pal.accentInk;
+        if (active) col = p2.accentInk;
+        else if (! iconColour.isTransparent()) col = iconColour;
+        if (flash > 0.01f)
+        {
+            g.setColour ((active ? Colours::white : p2.accent).withAlpha (0.55f * flash));
+            g.drawRoundedRectangle (content.reduced (2.0f), jmin (b.getHeight(), b.getWidth()) * radiusScale * 0.85f, 2.5f);
+        }
     }
     else
     {
@@ -586,13 +716,25 @@ void PushButton::paint (Graphics& g)
     }
     else if (iconId.isNotEmpty())
     {
-        draw::icon (g, iconId, content.reduced (content.getHeight() * 0.25f), col, 1.6f);
+        auto ir = content.reduced (content.getHeight() * 0.25f);
+        if (onMore != nullptr) ir = ir.translated (-content.getWidth() * 0.06f, -content.getHeight() * 0.03f);
+        draw::icon (g, iconId, ir, col, 1.6f);
     }
     else if (label.isNotEmpty())
     {
         g.setColour (col);
         g.setFont (draw::fitUi (ctx.fonts, label, jmin (14.5f, content.getHeight() * 0.48f), content.getWidth() - 6.0f, 2));
         g.drawText (label, content, Justification::centred, false);
+    }
+
+    if (onMore != nullptr)
+    {
+        const float cs = content.getHeight() * 0.26f;
+        auto cr = Rectangle<float> (content.getRight() - cs - content.getWidth() * 0.07f, content.getBottom() - cs - content.getHeight() * 0.06f, cs, cs);
+        Path tri;
+        tri.addTriangle (cr.getX(), cr.getY() + cs * 0.3f, cr.getRight(), cr.getY() + cs * 0.3f, cr.getCentreX(), cr.getBottom() - cs * 0.05f);
+        g.setColour (col.withAlpha (0.7f));
+        g.fillPath (tri);
     }
 }
 
@@ -649,6 +791,8 @@ void FieldButton::paint (Graphics& g)
 //==============================================================================
 RailBar::RailBar (UiContext& c)
     : midi (c, "MIDI"), key (c, "Tonalidad"), scale (c, "Escala"), latency (c, "Latencia"),
+      recBtn (c, "rec", U8 ("Grabar MIDI (la flechita abre tus grabaciones)")),
+      metroBtn (c, "metro", U8 ("Metrónomo (la flechita abre sus ajustes)")),
       dayBtn (c, "sun", U8 ("Modo día / noche")),
       colourBtn (c, "palette", U8 ("Color de la interfaz")),
       transpBtn (c, "transp", "Modo transparente"),
@@ -659,9 +803,11 @@ RailBar::RailBar (UiContext& c)
       menuBtn (c, "menu", U8 ("Menú")),
       ctx (c)
 {
-    for (Component* comp : std::initializer_list<Component*> { &midi, &key, &scale, &latency, &dayBtn, &colourBtn, &transpBtn, &splitBtn, &windowsBtn, &resetBtn, &hideBtn, &menuBtn })
+    for (Component* comp : std::initializer_list<Component*> { &midi, &key, &scale, &latency, &recBtn, &metroBtn, &dayBtn, &colourBtn, &transpBtn, &splitBtn, &windowsBtn, &resetBtn, &hideBtn, &menuBtn })
         addAndMakeVisible (comp);
     resetBtn.setActive (true);
+    recBtn.activeColour = Colour (0xffe5383b);
+    recBtn.iconColour = Colour (0xffe5383b);
     midi.setLed (0);
 }
 
@@ -682,7 +828,7 @@ void RailBar::resized()
     const int gap = roundToInt (8.0f * k);
     const int ib = roundToInt (48.0f * k);
     const int y = (b.getHeight() - ib) / 2;
-    logoArea = b.removeFromLeft (roundToInt (196.0f * k)).toFloat();
+    logoArea = b.removeFromLeft (roundToInt (180.0f * k)).toFloat();
     b.removeFromLeft (gap);
 
     auto placeR = [&] (Component& c, int w) { c.setBounds (b.getRight() - w, y, w, ib); b.removeFromRight (w + gap); };
@@ -698,7 +844,7 @@ void RailBar::resized()
     {
         // Con texto si cabe; si no, solo el ícono (para no apachurrar los campos)
         const float fieldsWant = (172.0f + 150.0f + 146.0f + 96.0f) * k + 4.0f * (float) gap;
-        const float iconsWant = 5.0f * (float) (ib + gap);
+        const float iconsWant = 7.0f * (float) (ib + gap);
         const bool roomForText = ! show || (float) b.getWidth() - iconsWant - 140.0f * k - (float) gap >= fieldsWant * 0.9f;
         resetBtn.setLabel (roomForText ? U8 ("Restablecer") : String());
         placeR (resetBtn, roomForText ? roundToInt (140.0f * k) : ib);
@@ -711,7 +857,14 @@ void RailBar::resized()
     {
         for (auto* btn : { &windowsBtn, &splitBtn, &transpBtn, &colourBtn, &dayBtn })
             placeR (*btn, ib);
+        b.removeFromRight (roundToInt (6.0f * k));
+    }
+    // Grabar y metrónomo siempre a la mano
+    placeR (metroBtn, ib);
+    placeR (recBtn, ib);
 
+    if (show)
+    {
         const int avail = b.getWidth();
         const float want = (172.0f + 150.0f + 146.0f + 96.0f) * k + 4.0f * (float) gap;
         const float f = jlimit (0.3f, 1.0f, (float) avail / want);
@@ -891,10 +1044,40 @@ InterfacePanel::InterfacePanel (UiContext& c, Prefs& p)
       mode (c, { U8 ("Día"), "Noche", "Auto" }),
       target (c, { "Tono del cuerpo", "Acento" }),
       picker (c),
-      resetBtn (c, "restore", U8 ("Quitar mis colores"), "Volver al original")
+      resetBtn (c, "restore", U8 ("Quitar mis colores"), "Volver al original"),
+      saveThemeBtn (c, "save", U8 ("Guardar estos colores como un tema tuyo"), "Guardar este tema"),
+      confirmBtn (c, "save", "Guardar", "Guardar"),
+      cancelBtn (c, "close", "Cancelar")
 {
-    for (Component* comp : std::initializer_list<Component*> { &mode, &target, &picker, &resetBtn })
+    for (Component* comp : std::initializer_list<Component*> { &mode, &target, &picker, &resetBtn, &saveThemeBtn })
         addAndMakeVisible (comp);
+    addChildComponent (nameEditor);
+    addChildComponent (confirmBtn);
+    addChildComponent (cancelBtn);
+    nameEditor.setFont (ctx.fonts.ui (16.0f, 1));
+    nameEditor.setColour (TextEditor::backgroundColourId, ctx.vis.pal.night ? ctx.vis.pal.plate.brighter (0.1f) : Colours::white);
+    nameEditor.setColour (TextEditor::textColourId, ctx.vis.pal.text);
+    nameEditor.setColour (TextEditor::outlineColourId, ctx.vis.pal.edge);
+    nameEditor.setColour (TextEditor::focusedOutlineColourId, ctx.vis.pal.accent);
+    nameEditor.setColour (CaretComponent::caretColourId, ctx.vis.pal.accent);
+    nameEditor.setIndents (12, 0);
+    nameEditor.setJustification (Justification::centredLeft);
+    confirmBtn.setActive (true);
+    auto commit = [this]
+    {
+        const auto name = nameEditor.getText().trim();
+        if (name.isEmpty()) return;
+        auto t = prefs.captureTheme (name);
+        bool replaced = false;
+        for (auto& th : prefs.themes) if (th.name == name) { th = t; replaced = true; }
+        if (! replaced) prefs.themes.push_back (t);
+        prefs.save (false);
+        setNaming (false);
+    };
+    nameEditor.onReturnKey = commit;
+    confirmBtn.onClick = commit;
+    cancelBtn.onClick = [this] { setNaming (false); };
+    saveThemeBtn.onClick = [this] { setNaming (true); };
     mode.setSelected (prefs.dayNight);
     mode.onChange = [this] (int i) { prefs.dayNight = i; prefs.save(); repaint(); };
     target.onChange = [this] (int) { refreshPicker(); };
@@ -906,7 +1089,29 @@ InterfacePanel::InterfacePanel (UiContext& c, Prefs& p)
     };
     resetBtn.onClick = [this] { prefs.uiTint = Colour(); prefs.uiAccent = Colour(); prefs.save(); refreshPicker(); repaint(); };
     refreshPicker();
-    setSize (740, 400);
+    setSize (740, 488);
+}
+
+void InterfacePanel::setNaming (bool n)
+{
+    naming = n;
+    nameEditor.setVisible (n);
+    confirmBtn.setVisible (n);
+    cancelBtn.setVisible (n);
+    saveThemeBtn.setVisible (! n);
+    if (n)
+    {
+        nameEditor.setText ("Mi tema " + String ((int) prefs.themes.size() + 1), false);
+        nameEditor.grabKeyboardFocus();
+        nameEditor.selectAll();
+    }
+    repaint();
+}
+
+Rectangle<float> InterfacePanel::themeChip (int i) const
+{
+    // Los temas guardados, en fila (los que quepan antes del botón de guardar)
+    return { (float) i * 150.0f, 438.0f, 142.0f, 44.0f };
 }
 
 void InterfacePanel::refreshPicker()
@@ -930,6 +1135,10 @@ void InterfacePanel::resized()
     target.setBounds (390, 0, 350, 38);
     picker.setBounds (390, 52, 350, 290);
     resetBtn.setBounds (390, 356, 350, 42);
+    saveThemeBtn.setBounds (getWidth() - 200, 438, 200, 44);
+    nameEditor.setBounds (0, 438, getWidth() - 220, 44);
+    confirmBtn.setBounds (getWidth() - 212, 438, 150, 44);
+    cancelBtn.setBounds (getWidth() - 52, 438, 52, 44);
 }
 
 void InterfacePanel::paint (Graphics& g)
@@ -944,6 +1153,36 @@ void InterfacePanel::paint (Graphics& g)
     label ("Estilo", 0.0f);
     label (U8 ("Modo día o noche"), 124.0f);
     label (U8 ("Paletas rápidas"), 192.0f);
+    label (naming ? U8 ("Nombre de tu tema (Enter para guardar)") : U8 ("Mis temas"), 412.0f);
+
+    if (! naming)
+    {
+        const int maxChips = (getWidth() - 210) / 150;
+        if (prefs.themes.empty())
+        {
+            g.setColour (pal.dim.withAlpha (0.8f));
+            g.setFont (ctx.fonts.ui (14.0f, 1));
+            g.drawText (U8 ("Aquí aparecen los temas que guardes (estilo, día/noche y colores)."),
+                        Rectangle<float> (0.0f, 438.0f, (float) getWidth() - 214.0f, 44.0f), Justification::centredLeft, true);
+        }
+        for (int i = 0; i < (int) prefs.themes.size() && i < maxChips; ++i)
+        {
+            const auto& t = prefs.themes[(size_t) i];
+            auto r = themeChip (i);
+            draw::button (g, r, pal, 10.0f, 0.0f, false);
+            auto in = r.withTrimmedBottom (2.5f).reduced (10.0f, 0.0f);
+            auto x = in.removeFromRight (18.0f);
+            const auto body = t.uiTint.isTransparent() ? prefs.palette (t.look).body2 : t.uiTint;
+            const auto acc = t.uiAccent.isTransparent() ? prefs.palette (t.look).accent : t.uiAccent;
+            auto dots = in.removeFromLeft (28.0f);
+            g.setColour (body); g.fillEllipse (dots.getX(), dots.getCentreY() - 7.0f, 14.0f, 14.0f);
+            g.setColour (acc);  g.fillEllipse (dots.getX() + 10.0f, dots.getCentreY() - 7.0f, 14.0f, 14.0f);
+            g.setColour (confirmDelete == i ? Colour (0xffe5383b) : pal.btnText);
+            g.setFont (draw::fitUi (ctx.fonts, confirmDelete == i ? U8 ("¿Borrar?") : t.name, 14.0f, in.getWidth(), 1));
+            g.drawText (confirmDelete == i ? U8 ("¿Borrar?") : t.name, in, Justification::centredLeft, true);
+            draw::icon (g, "close", x.withSizeKeepingCentre (14.0f, 14.0f), (confirmDelete == i ? Colour (0xffe5383b) : pal.btnText.withAlpha (0.5f)), 1.4f);
+        }
+    }
 
     const auto cur = lookIndex (prefs.look);
     for (int i = 0; i < 3; ++i)
@@ -995,6 +1234,29 @@ void InterfacePanel::paint (Graphics& g)
 
 void InterfacePanel::mouseUp (const MouseEvent& e)
 {
+    if (! naming)
+    {
+        const int maxChips = (getWidth() - 210) / 150;
+        for (int i = 0; i < (int) prefs.themes.size() && i < maxChips; ++i)
+        {
+            auto r = themeChip (i);
+            if (! r.contains (e.position)) continue;
+            if (e.position.x > r.getRight() - 28.0f)
+            {
+                if (confirmDelete == i) { prefs.themes.erase (prefs.themes.begin() + i); prefs.save (false); confirmDelete = -1; }
+                else confirmDelete = i;
+                repaint();
+                return;
+            }
+            confirmDelete = -1;
+            prefs.applyTheme (prefs.themes[(size_t) i]);
+            mode.setSelected (prefs.dayNight);
+            refreshPicker();
+            repaint();
+            return;
+        }
+        if (confirmDelete >= 0) { confirmDelete = -1; repaint(); }
+    }
     for (int i = 0; i < 3; ++i)
         if (lookTile (i).contains (e.position))
         {

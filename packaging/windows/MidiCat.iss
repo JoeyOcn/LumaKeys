@@ -1,6 +1,6 @@
 ﻿; Instalador de Midi Cat para Windows (Inno Setup 6)
 #ifndef AppVersion
-  #define AppVersion "1.3.0"
+  #define AppVersion "1.3.1"
 #endif
 #define ArtDir "..\..\build\MidiCat_artefacts\Release"
 
@@ -19,7 +19,7 @@ UsePreviousGroup=no
 DisableProgramGroupPage=yes
 DisableDirPage=yes
 OutputDir=..\..\dist
-OutputBaseFilename=Midi-Cat-Instalador-Windows
+OutputBaseFilename=MidiCat-Instalador-Windows
 SetupIconFile=MidiCat.ico
 Compression=lzma2
 SolidCompression=yes

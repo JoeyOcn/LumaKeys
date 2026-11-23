@@ -241,6 +241,7 @@ void ScreenSection::paintContent (Graphics& g, Rectangle<float> area)
     const auto& pal = v.pal;
     const bool tm = transparentMode();
     const int count = (int) v.active.size();
+    const int distinct = theory::countBits (v.activeMask);
 
     String sub, leftTop, leftBig, leftSub;
     leftTop = "Grado en " + theory::keyTitle (v.keyRoot, v.scale, true);
@@ -254,26 +255,29 @@ void ScreenSection::paintContent (Graphics& g, Rectangle<float> area)
         leftBig = "";
         leftSub = U8 ("Toca una nota o un acorde");
     }
-    else if (count == 1)
+    else if (distinct == 1)
     {
         const int m = v.active.front();
         const double hz = 440.0 * std::pow (2.0, (m - 69) / 12.0);
-        sub = theory::noteName (m, v.sig, true, false) + (m == 60 ? U8 (" central") : String()) + ", " + String (hz, 1) + " Hz";
+        if (count == 1)
+            sub = theory::noteName (m, v.sig, true, false) + (m == 60 ? U8 (" central") : String()) + ", " + String (hz, 1) + " Hz";
+        else
+            sub = theory::pcName (m % 12, v.sig, true) + U8 (" en ") + String (count) + U8 (" octavas");
         const auto deg = theory::noteDegree (theory::pcOf (m), v.keyRoot, v.scale);
         leftBig = deg.upToFirstOccurrenceOf (U8 (" ·"), false, false);
         leftSub = deg.fromFirstOccurrenceOf (U8 ("· "), false, false);
     }
-    else if (v.chord.valid && (count >= 3 || v.chord.suffix == "5"))
+    else if (v.chord.valid && (distinct >= 3 || v.chord.suffix == "5"))
     {
         sub = theory::pcName (v.chord.root, v.sig, true) + " " + v.chord.quality;
         if (v.chord.inversion != "estado fundamental") sub << ", " << v.chord.inversion;
         leftBig = v.degree.roman;
         leftSub = v.degree.function.replace (U8 (" · "), U8 (": "));
     }
-    else if (count == 2)
+    else if (distinct == 2)
     {
-        const int iv = v.active[1] - v.active[0];
-        sub = theory::noteName (v.active[0], v.sig, v.latin) + " a " + theory::noteName (v.active[1], v.sig, v.latin)
+        const int iv = theory::firstInterval (v.active);
+        sub = theory::noteName (v.active[0], v.sig, v.latin) + " a " + theory::noteName (v.active[0] + iv, v.sig, v.latin)
               + ", " + String (iv) + (iv == 1 ? " semitono" : " semitonos");
         const int ivc = iv % 12;
         const bool consonant = ivc == 0 || ivc == 3 || ivc == 4 || ivc == 5 || ivc == 7 || ivc == 8 || ivc == 9;
@@ -282,7 +286,7 @@ void ScreenSection::paintContent (Graphics& g, Rectangle<float> area)
     }
     else
     {
-        sub = String (count) + U8 (" notas sin nombre de acorde común");
+        sub = String (distinct) + U8 (" notas sin nombre de acorde común");
         leftBig = "";
         leftSub = U8 ("Prueba quitando una nota");
     }
@@ -476,13 +480,16 @@ void DegreesSection::mouseDown (const MouseEvent& e)
         {
             pressed = i;
             animate();
-            if (onPreview) onPreview (i);
+            const auto t = tile (i);
+            const float vel = jlimit (0.2f, 1.0f, 0.3f + 0.7f * (e.position.y - t.getY()) / jmax (1.0f, t.getHeight()));
+            if (onPreview) onPreview (i, vel);
             return;
         }
 }
 
 void DegreesSection::mouseUp (const MouseEvent&)
 {
+    if (pressed >= 0 && onRelease) onRelease();
     pressed = -1;
     animate();
 }

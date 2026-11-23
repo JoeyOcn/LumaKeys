@@ -13,12 +13,17 @@ Funciona como plugin **VST3** y **AU** (Ableton Live 12 y otros DAW) y como **ap
 - Nueve sonidos: piano de cola, de concierto, suave, de bar, eléctrico, eléctrico con trémolo, celesta, de juguete y clavecín.
 - Botón **Pedal** en pantalla: sostiene las notas sin pedal físico.
 - Cada parte se puede separar en su propia ventana, minimizar y regresar a su lugar con "Restablecer".
+- Metrónomo integrado con 6 sonidos suaves, tempo, compás y volumen (dentro del DAW sigue su tempo).
+- Grabadora MIDI: guarda lo que tocas (también lo que tocas con el mouse) en Música > Midi Cat > Grabaciones, listo para arrastrar a Ableton o FL Studio.
+- Piano roll estilo FL Studio para editar las grabaciones (lápiz, seleccionar, cortar, borrar, rejilla, cuantizar, velocity, deshacer, copiar/pegar).
+- En la app sola: busca y toca con tus propios instrumentos VST3 / AU.
+- Presets propios de temas y de acomodos de ventanas.
 - Conectar y desconectar MIDI sin interrumpir a Ableton.
 
 ## Descargar
 
 En **Releases → Midi Cat · última versión** están los instaladores:
-`Midi-Cat-Instalador-Mac.pkg` y `Midi-Cat-Instalador-Windows.exe`
+`MidiCat-Instalador-Mac.pkg` y `MidiCat-Instalador-Windows.exe`
 (y los `.zip` para instalar a mano, cada uno con su `LEEME.txt`).
 
 ## Compilar

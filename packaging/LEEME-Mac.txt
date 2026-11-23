@@ -3,7 +3,7 @@ Midi Cat para Mac
 
 (Antes se llamaba MidiSky. El instalador quita la versión vieja solito.)
 
-Lo más fácil: usa el instalador (Midi-Cat-Instalador-Mac.pkg).
+Lo más fácil: usa el instalador (MidiCat-Instalador-Mac.pkg).
 Clic derecho > Abrir > Abrir, luego "Continuar" e "Instalar". Pone el plugin
 donde Ableton lo busca solo. Lo de abajo es solo si prefieres copiarlo a mano.
 
@@ -44,6 +44,34 @@ Cómo usarlo
   pon tu instrumento en una cadena y Midi Cat en otra, y apaga su piano.
 - "MIDI" arriba: clic para pausar o reanudar lo que Midi Cat escucha de Ableton.
   No desconecta nada en Ableton.
+
+Metrónomo, grabadora y piano roll (botones de arriba)
+-----------------------------------------------------
+- Metrónomo: clic para prenderlo o apagarlo. La flechita abre sus ajustes:
+  tempo (o Tap), tiempos por compás, 6 sonidos suaves y volumen.
+  Dentro del DAW sigue el tempo del DAW.
+- Botón rojo: graba lo que tocas (y si quieres, también lo que tocas con el mouse,
+  incluidos los grados). Con metrónomo hay una cuenta de 1 compás y el MIDI cae
+  justo en el compás. La flechita abre tus grabaciones.
+- Tus grabaciones se guardan solas en la carpeta Música > Midi Cat > Grabaciones.
+  Desde la lista las arrastras a la vista Arrangement de Ableton o a la Playlist de FL.
+- Piano roll (lápiz): ventana grande o chica para editar como en FL Studio:
+  lápiz, seleccionar, cortar, borrar, ajuste a la rejilla, cuantizar, fuerza (velocity)
+  abajo, Ctrl+Z, Ctrl+C / Ctrl+V, Ctrl+B duplica, flechas para mover, espacio reproduce.
+  Todo se guarda solo, y el botón "Arrastra al DAW" lo lleva a tu proyecto.
+- Al tocar con el mouse: entre más abajo das clic en la tecla o el grado, más fuerte suena.
+
+Presets
+-------
+- Color de la interfaz > "Guardar este tema": guarda tu estilo, día/noche y colores.
+- Botón de ventanas > "Guardar este acomodo…": guarda cómo tienes las ventanas
+  separadas, invisibles o minimizadas, para volver a ponerlas igual con un clic.
+
+Tus instrumentos VST3 / AU (solo en la app Midi Cat.app, sin Ableton)
+---------------------------------------------------------------------
+- En "Sonido" elige "Buscar mis instrumentos…" y luego "Buscar instrumentos".
+  Midi Cat revisa tus carpetas de plugins y te deja tocar con ellos
+  (y abrir su ventana). Si alguno hace que se cierre, la siguiente vez lo salta.
 
 Créditos: piano de cola Salamander Grand Piano de Alexander Holm (CC BY 3.0);
 piano de concierto Splendid Grand Piano (muestras de dominio público de Akai);

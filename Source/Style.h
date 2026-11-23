@@ -68,6 +68,24 @@ struct FloatState
     bool collapsed = false;        // minimizada (solo se ve su barra)
 };
 
+// Un tema guardado por ti (estilo, día/noche y colores)
+struct ThemePreset
+{
+    juce::String name, look;
+    int dayNight = 0, keyStyle = -1;
+    juce::Colour uiTint, uiAccent, keyLit, keyWhite, keyBlack;
+    bool rainbow = false;
+};
+
+// Un acomodo guardado de las ventanas (separadas, invisibles, minimizadas…)
+struct LayoutPreset
+{
+    juce::String name;
+    std::map<juce::String, FloatState> floats;
+    bool transparent = false, hideParams = false;
+    int editorW = 0, editorH = 0;
+};
+
 // Preferencias visuales globales (se guardan en la compu y se comparten entre instancias).
 class Prefs : public juce::ChangeBroadcaster
 {
@@ -91,6 +109,21 @@ public:
     bool lowLatencyDone = false;
 
     std::map<juce::String, FloatState> floats;   // por sección: "partitura", "acorde", "tablillas", "circulo", "teclado"
+
+    // Metrónomo y grabadora
+    float metroBpm = 100.0f;
+    int metroBeats = 4;
+    int metroSound = 0;
+    float metroVolume = -8.0f;
+    bool metroFollowHost = true;
+    bool countIn = true;
+    bool recordMouse = true;
+
+    // Tus presets
+    std::vector<ThemePreset> themes;
+    std::vector<LayoutPreset> layouts;
+    ThemePreset captureTheme (const juce::String& name) const;
+    void applyTheme (const ThemePreset&);
 
     void save (bool notify = true);
     Skin palette (const juce::String& lookOverride = {}) const;
