@@ -150,7 +150,7 @@ private:
     class DragOut;
     std::unique_ptr<DragOut> dragOut, audioOut;
     int audioState = -2, audioTick = 0;   // para repintar el chip de audio solo cuando cambia
-    // Las barras usan el mismo sentido que el resto del piano roll (siguen a los dedos)
+    // Las barras se mueven igual que el resto del piano roll (como el trackpad)
     struct WheelBar : juce::ScrollBar
     {
         using juce::ScrollBar::ScrollBar;

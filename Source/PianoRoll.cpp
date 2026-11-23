@@ -1226,9 +1226,9 @@ void PianoRoll::mouseMove (const MouseEvent& e)
 void PianoRoll::mouseWheelMove (const MouseEvent& e, const MouseWheelDetails& w)
 {
     // Proporcional al movimiento: suave con trackpad y con rueda
-    // Con el trackpad, la barra de abajo se mueve hacia donde mueves los dedos
-    const float dy = w.deltaY * (w.isReversed ? -1.0f : 1.0f);
-    const float dx = w.deltaX * (w.isReversed ? -1.0f : 1.0f);
+    // Como el trackpad de la Mac (y como Ableton): lo que ves sigue a tus dedos
+    const float dy = w.deltaY;
+    const float dx = w.deltaX;
     const auto g = gridArea();
     if (e.mods.isCommandDown() || e.mods.isCtrlDown())
     {

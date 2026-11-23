@@ -76,7 +76,7 @@ grabar y metrónomo | día/noche y color | ventanas | ocultar y menú.
     Ctrl+D duplica, Ctrl+E divide, Ctrl+U cuantiza, Ctrl+A todo, Ctrl+C / Ctrl+V,
     Ctrl+Z deshace. Ctrl+1 / Ctrl+2 rejilla más fina / más ancha, Ctrl+3 tresillos,
     Ctrl+4 rejilla sí/no. Flechas mueven; Shift+flechas cambian largo u octava.
-    Rueda: subir/bajar. Shift+rueda: a los lados (la barra sigue a tus dedos). Ctrl+rueda: zoom.
+    Rueda o trackpad: se mueve como en la Mac (sigue a tus dedos). Shift+rueda: a los lados. Ctrl+rueda: zoom.
     Arrastra arriba/abajo en la regla de compases para hacer zoom.
     Espacio reproduce. Clic derecho: menú con todo.
   Todo se guarda solo. "Arrastra MIDI" lo lleva a tu proyecto con la tonalidad

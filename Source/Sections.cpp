@@ -391,13 +391,23 @@ void ScreenSection::paintContent (Graphics& g, Rectangle<float> area)
     auto tags = in.removeFromBottom (34.0f * k);
     {
         const auto pf = ctx.fonts.ui (15.0f * k, 2);
-        float x = tags.getX();
+        // Al centro: primero se mide cuántas caben y cuánto ocupan
+        const float gapT = 9.0f * k;
+        float total = 0.0f;
+        int fit = 0;
         for (int i = 0; i < (int) v.active.size(); ++i)
+        {
+            const float w = draw::textWidth (pf, theory::noteName (v.active[(size_t) i], v.sig, v.latin)) + 28.0f * k;
+            if (total + w > tags.getWidth()) break;
+            total += w + gapT;
+            ++fit;
+        }
+        float x = tags.getCentreX() - jmax (0.0f, total - gapT) * 0.5f;
+        for (int i = 0; i < fit; ++i)
         {
             const int m = v.active[(size_t) i];
             const auto nm = theory::noteName (m, v.sig, v.latin);
             const float w = draw::textWidth (pf, nm) + 28.0f * k;
-            if (x + w > tags.getRight()) break;
             auto tr = Rectangle<float> (x, tags.getY() + 2.0f * k, w, 30.0f * k);
             const auto col = pal.rainbow || ! pal.pixelScreen ? pal.noteColour (m) : pal.noteTag (i);
             const float lv = jmax (0.45f, v.level[(size_t) m]);
@@ -435,13 +445,13 @@ void ScreenSection::paintContent (Graphics& g, Rectangle<float> area)
     bool dropBelow = false;
     {
         const auto f0 = fitBig (bigNow, centre, bigMax, 150.0f * k);
-        const auto box = centre.translated (60.0f * k, 0.0f).withTrimmedRight (60.0f * k);
+        const auto box = centre;
         const float tw = draw::textWidth (f0, bigNow);
         const float textLeft = box.getCentreX() - tw * 0.5f;
         const float textTop = box.getCentreY() - f0.getAscent() * 0.75f;
         dropBelow = textLeft < leftRight && textTop < cornerBottom;
     }
-    auto bigBox = dropBelow ? in.withTop (cornerBottom) : centre.translated (60.0f * k, 0.0f).withTrimmedRight (60.0f * k);
+    auto bigBox = dropBelow ? in.withTop (cornerBottom) : centre;   // siempre al centro
     const float bigH = dropBelow ? jmin (bigBox.getHeight() * 1.05f, bigMax) : bigMax;
     const float f = v.bigFade;
     const float ease = 1.0f - (1.0f - f) * (1.0f - f);

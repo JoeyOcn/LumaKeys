@@ -74,7 +74,7 @@ grabar y metrónomo | día/noche y color | ventanas | ocultar y menú.
     Cmd+D duplica, Cmd+E divide, Cmd+U cuantiza, Cmd+A todo, Cmd+C / Cmd+V,
     Cmd+Z deshace. Cmd+1 / Cmd+2 rejilla más fina / más ancha, Cmd+3 tresillos,
     Cmd+4 rejilla sí/no. Flechas mueven; Shift+flechas cambian largo u octava.
-    Rueda: subir/bajar. Shift+rueda: a los lados (la barra sigue a tus dedos). Cmd+rueda: zoom.
+    Rueda o trackpad: se mueve como en la Mac (sigue a tus dedos). Shift+rueda: a los lados. Cmd+rueda: zoom.
     Arrastra arriba/abajo en la regla de compases para hacer zoom.
     Espacio reproduce. Clic derecho: menú con todo.
   Todo se guarda solo. "Arrastra MIDI" lo lleva a tu proyecto con la tonalidad
