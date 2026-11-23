@@ -232,6 +232,17 @@ public:
     static juce::String keyName (int code);
     static juce::String padName (int code);
 
+    // Atajos de teclado (Mac y Windows): tecla + modificadores (Cmd/Ctrl, Alt/Opción, Shift)
+    struct Shortcut { int code = 0, mods = 0; bool operator== (const Shortcut& o) const { return code == o.code && mods == o.mods; } };
+    enum ShortcutId { scMetro = 0, scMetroStop, scRecord, numShortcuts };
+    std::array<Shortcut, numShortcuts> shortcuts { { { 'm', 0 }, { juce::KeyPress::returnKey, 0 }, { 'r', 0 } } };
+    static std::array<Shortcut, numShortcuts> defaultShortcuts();
+    static juce::StringArray shortcutNames();
+    static Shortcut shortcutOf (const juce::KeyPress&);
+    static juce::String shortcutName (Shortcut);
+    int shortcutFor (const juce::KeyPress&) const;   // -1 si esa tecla no es un atajo
+    void assignShortcut (int id, Shortcut);             // quita la tecla de donde estuviera (otro atajo o un grado)
+
     // Tus presets
     std::vector<ThemePreset> themes;
     std::vector<LayoutPreset> layouts;

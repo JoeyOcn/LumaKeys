@@ -1276,21 +1276,30 @@ bool PianoRoll::keyPressed (const KeyPress& key)
     const int code = key.getKeyCode();
     auto is = [code] (char c) { return code == c || code == (c - 'A' + 'a'); };
 
+    // Tus atajos (metrónomo y grabar) primero
+    switch (shortcutFor ? shortcutFor (key) : -1)
+    {
+        case 0:   // metrónomo: aquí prende o apaga el clic al reproducir
+            metroOn = ! metroOn;
+            metroBtn.setActive (metroOn);
+            return true;
+        case 1:   // parar el metrónomo (las notas siguen)
+        {
+            bool used = onStopMetronome && onStopMetronome();
+            if (playing.load() && metroOn) { metroOn = false; metroBtn.setActive (false); used = true; }
+            if (used) return true;
+            break;
+        }
+        case 2:
+            if (onRecordKey) { onRecordKey(); return true; }
+            break;
+        default: break;
+    }
+
     if (key == KeyPress::deleteKey || key == KeyPress::backspaceKey) { deleteSelected(); return true; }
     if (key == KeyPress::escapeKey) { selectAll (false); return true; }
     if (key == KeyPress::spaceKey) { togglePlay(); return true; }
-    if (code == KeyPress::returnKey || code == 3)
-    {
-        // Enter: para el metrónomo si está sonando (las notas siguen)
-        bool used = onStopMetronome && onStopMetronome();
-        if (playing.load() && metroOn)
-        {
-            metroOn = false;
-            metroBtn.setActive (false);
-            used = true;
-        }
-        return used;
-    }
+
     if (key.isKeyCode (KeyPress::upKey))    { transpose (mods.isShiftDown() ? 12 : 1); return true; }
     if (key.isKeyCode (KeyPress::downKey))  { transpose (mods.isShiftDown() ? -12 : -1); return true; }
     if (key.isKeyCode (KeyPress::leftKey))  { if (mods.isShiftDown()) stretch (-1); else nudge (-1); return true; }

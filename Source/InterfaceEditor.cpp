@@ -1637,6 +1637,8 @@ bool DegreeInputPanel::keyPressed (const KeyPress& key)
     if (code >= 'A' && code <= 'Z') code += 'a' - 'A';
     if (key == KeyPress::backspaceKey || key == KeyPress::deleteKey) code = 0;
     for (auto& k : prefs.degreeKeys) if (k == code && code != 0) k = 0;   // una tecla, un grado
+    for (auto& sc : prefs.shortcuts)   // si era un atajo (sin Cmd/Ctrl/Alt), ahora es del grado
+        if (code != 0 && sc.code == code && (sc.mods & ~ModifierKeys::shiftModifier) == 0) sc = {};
     prefs.degreeKeys[(size_t) listenRow] = code;
     prefs.save();
     listen (-1, 0);
@@ -1655,4 +1657,139 @@ void DegreeInputPanel::timerCallback()
     prefs.save();
     if (learnAll && listenRow < 6) listen (listenRow + 1, 1);
     else { learnAll = false; listen (-1, 1); }
+}
+
+//==============================================================================
+// Atajos de teclado
+//==============================================================================
+ShortcutsPanel::ShortcutsPanel (UiContext& c, Prefs& p, std::function<void()> openDegreeKeys)
+    : ctx (c), prefs (p),
+      degreesBtn (c, "keys", U8 ("Las teclas que tocan los grados I a VII"), U8 ("Teclas de los grados…")),
+      defaultsBtn (c, "restore", U8 ("M, Enter y R"), "Restablecer")
+{
+    setWantsKeyboardFocus (true);
+    addAndMakeVisible (degreesBtn);
+    addAndMakeVisible (defaultsBtn);
+    degreesBtn.onClick = std::move (openDegreeKeys);
+    defaultsBtn.onClick = [this]
+    {
+        prefs.shortcuts = {};
+        const auto d = Prefs::defaultShortcuts();
+        for (int i = 0; i < Prefs::numShortcuts; ++i) prefs.assignShortcut (i, d[(size_t) i]);
+        prefs.save();
+        note = {};
+        listen (-1);
+    };
+    setSize (460, 330);
+}
+
+ShortcutsPanel::~ShortcutsPanel() { DegreeInputPanel::capturing = false; }
+
+Rectangle<float> ShortcutsPanel::slot (int row) const
+{
+    return { (float) getWidth() - 210.0f, 64.0f + (float) row * 50.0f, 210.0f, 40.0f };
+}
+
+void ShortcutsPanel::resized()
+{
+    const int y = getHeight() - 44;
+    degreesBtn.setBounds (0, y, 230, 42);
+    defaultsBtn.setBounds (getWidth() - 160, y, 160, 42);
+}
+
+void ShortcutsPanel::listen (int row)
+{
+    listenRow = row;
+    DegreeInputPanel::capturing = row >= 0;   // mientras eliges, las teclas no hacen nada más
+    if (row >= 0) grabKeyboardFocus();
+    repaint();
+}
+
+void ShortcutsPanel::paint (Graphics& g)
+{
+    const auto& pal = ctx.vis.pal;
+    g.setColour (pal.dim);
+    g.setFont (ctx.fonts.ui (13.5f, 1));
+   #if JUCE_MAC
+    const String how = U8 ("Haz clic en una casilla y presiona la tecla. Puedes sumarle Cmd, Opción, Shift o Ctrl. Borrar o clic derecho la quita.");
+   #else
+    const String how = U8 ("Haz clic en una casilla y presiona la tecla. Puedes sumarle Ctrl, Alt o Shift. Borrar o clic derecho la quita.");
+   #endif
+    g.drawFittedText (how, Rectangle<int> (0, 0, getWidth(), 50), Justification::topLeft, 3);
+
+    const auto names = Prefs::shortcutNames();
+    for (int i = 0; i < Prefs::numShortcuts; ++i)
+    {
+        auto r = slot (i);
+        g.setColour (pal.text);
+        g.setFont (ctx.fonts.ui (15.0f, 1));
+        g.drawText (names[i], Rectangle<float> (0.0f, r.getY(), r.getX() - 10.0f, r.getHeight()), Justification::centredLeft, true);
+        const bool on = listenRow == i;
+        g.setColour (on ? pal.accent.withAlpha (0.18f) : (pal.night ? pal.plate.brighter (0.12f) : pal.plate));
+        g.fillRoundedRectangle (r, 9.0f);
+        g.setColour (on ? pal.accent : pal.text.withAlpha (hover == i ? 0.32f : 0.14f));
+        g.drawRoundedRectangle (r.reduced (0.5f), 9.0f, on ? 2.0f : 1.0f);
+        g.setColour (on ? pal.accent : pal.text);
+        g.setFont (ctx.fonts.ui (14.5f, on ? 2 : 1));
+        g.drawText (on ? U8 ("Presiona una tecla…") : Prefs::shortcutName (prefs.shortcuts[(size_t) i]), r.reduced (12.0f, 0.0f), Justification::centredLeft, true);
+    }
+
+    g.setColour (note.isNotEmpty() ? pal.accent : pal.dim);
+    g.setFont (ctx.fonts.ui (13.0f, 1));
+    const String tip = note.isNotEmpty() ? note
+                     : U8 ("En Ableton u otro DAW, haz clic en MidiCat primero para que le lleguen las teclas.");
+    g.drawFittedText (tip, Rectangle<int> (0, 64 + 3 * 50 + 4, getWidth(), 40), Justification::topLeft, 2);
+}
+
+void ShortcutsPanel::mouseMove (const MouseEvent& e)
+{
+    int h = -1;
+    for (int i = 0; i < Prefs::numShortcuts; ++i) if (slot (i).contains (e.position)) h = i;
+    if (h != hover) { hover = h; setMouseCursor (h >= 0 ? MouseCursor::PointingHandCursor : MouseCursor::NormalCursor); repaint(); }
+}
+
+void ShortcutsPanel::mouseUp (const MouseEvent& e)
+{
+    for (int i = 0; i < Prefs::numShortcuts; ++i)
+        if (slot (i).contains (e.position))
+        {
+            if (e.mods.isPopupMenu())   // clic derecho: quitar
+            {
+                prefs.shortcuts[(size_t) i] = {};
+                prefs.save();
+                listen (-1);
+                return;
+            }
+            listen (listenRow == i ? -1 : i);
+            return;
+        }
+    if (listenRow >= 0) listen (-1);
+}
+
+bool ShortcutsPanel::keyPressed (const KeyPress& key)
+{
+    if (listenRow < 0) return false;
+    if (key == KeyPress::escapeKey) { listen (-1); return true; }
+    auto s = Prefs::shortcutOf (key);
+    if (key == KeyPress::backspaceKey || key == KeyPress::deleteKey) s = {};
+    // Avisar si se le quitó la tecla a otro atajo o a un grado
+    note = {};
+    if (s.code > 0)
+    {
+        const auto names = Prefs::shortcutNames();
+        for (int i = 0; i < Prefs::numShortcuts; ++i)
+            if (i != listenRow && prefs.shortcuts[(size_t) i] == s)
+                note = U8 ("Esa tecla era de «") + names[i] + U8 ("»: ahora es de este.");
+        if ((s.mods & ~ModifierKeys::shiftModifier) == 0)
+            for (int i = 0; i < 7; ++i)
+                if (prefs.degreeKeys[(size_t) i] == s.code)
+                {
+                    static const char* romans[7] = { "I", "II", "III", "IV", "V", "VI", "VII" };
+                    note = U8 ("Esa tecla tocaba el grado ") + romans[i] + U8 (": ahora es de este atajo.");
+                }
+    }
+    prefs.assignShortcut (listenRow, s);
+    prefs.save();
+    listen (-1);
+    return true;
 }

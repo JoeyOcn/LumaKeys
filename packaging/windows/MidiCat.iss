@@ -1,6 +1,6 @@
 ﻿; Instalador de MidiCat para Windows (Inno Setup 6)
 #ifndef AppVersion
-  #define AppVersion "1.5.2"
+  #define AppVersion "1.5.3"
 #endif
 #define ArtDir "..\..\build\MidiCat_artefacts\Release"
 

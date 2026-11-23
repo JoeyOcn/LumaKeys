@@ -52,7 +52,7 @@ Metrónomo, grabadora y piano roll (botones de arriba)
 Arriba a la derecha los botones están en grupitos:
 grabar y metrónomo | día/noche y color | ventanas | ocultar y menú.
 
-- Metrónomo: clic para prenderlo o apagarlo (Enter lo para). La flechita abre sus ajustes:
+- Metrónomo: clic para prenderlo o apagarlo (tecla M; Enter lo para). La flechita abre sus ajustes:
   tempo (o Tap), tiempos por compás, 6 sonidos suaves y volumen.
   Dentro del DAW sigue el tempo del DAW.
 - Botón rojo: graba lo que tocas (y si quieres, también lo que tocas con el mouse,
@@ -86,6 +86,10 @@ grabar y metrónomo | día/noche y color | ventanas | ocultar y menú.
 - Al tocar con el mouse: entre más abajo das clic en la tecla o el grado, más fuerte suena.
 - Grados (I a VII): a su derecha está la octava en la que suenan; flechita arriba o abajo
   para cambiarla.
+- Atajos de teclado: ☰ > "Atajos de teclado (metrónomo y grabar)…". Vienen con
+  M (metrónomo), Enter (parar el metrónomo) y R (grabar o detener). Haz clic en la
+  casilla y presiona la tecla que quieras; puedes sumarle Ctrl, Alt o Shift.
+  Si la tecla la usaba un grado, se le quita al grado (y te avisa).
 - Grados con teclas de la compu y pads: las teclas 1 a 7 tocan los grados I a VII
   (suenan y se graban; en la interfaz no se ve nada). Para cambiarlas o usar los pads
   de tu controlador (finger drumming): clic derecho en los grados, o ☰ > "Grados:

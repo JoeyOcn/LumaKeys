@@ -86,6 +86,8 @@ private:
     std::array<int, 128> degreeRefs {};
     void showDegreeInputPanel();
     void showPiecePanel (int piece);
+    void showShortcutsPanel();
+    bool runShortcut (int id);
     PanelHooks panelHooks();
     LayoutPreset currentLayout (const juce::String& name);
     juce::Image backdropFor (juce::Rectangle<int> area, float scale);

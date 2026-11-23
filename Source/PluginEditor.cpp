@@ -438,6 +438,12 @@ void MidiSkyEditor::refreshPalette()
     rail.splitBtn.setActive (keyboard.floating);
     rail.hideBtn.setIcon (prefs->hideParams ? "eye" : "eyeoff");
     rail.dayBtn.setIcon (prefs->isNight() ? "moon" : "sun");
+    {
+        const auto& sc = prefs->shortcuts;
+        auto keyHint = [] (Prefs::Shortcut k) { return k.code > 0 ? U8 (" · tecla: ") + Prefs::shortcutName (k) : String(); };
+        rail.metroBtn.setTooltip (U8 ("Metrónomo (la flechita abre sus ajustes)") + keyHint (sc[Prefs::scMetro]));
+        rail.recBtn.setTooltip (U8 ("Grabar MIDI (la flechita abre tus grabaciones)") + keyHint (sc[Prefs::scRecord]));
+    }
     rail.dayBtn.setActive (prefs->dayNight == 2);
     lastNight = prefs->isNight();
     applyRange (prefs->startC, prefs->octaves);
@@ -1323,6 +1329,7 @@ void MidiSkyEditor::timerCallback()
         if (demoPopover == "grados") showDegreeInputPanel();
         if (demoPopover.startsWith ("pieza")) showPiecePanel (demoPopover.getTrailingIntValue());
         if (demoPopover == "metro") showMetronomePanel (rail.metroBtn);
+        if (demoPopover == "atajos") showShortcutsPanel();
         if (demoPopover == "grabaciones") showRecordingsPanel (rail.recBtn);
         {
             const auto dt = SystemStats::getEnvironmentVariable ("MIDISKY_DRAGTEST", "");
@@ -1652,6 +1659,7 @@ void MidiSkyEditor::showMainMenu()
     m.addItem (23, U8 ("Grabaciones MIDI…"));
     m.addItem (25, U8 ("Nuevo MIDI en el piano roll…"));
     m.addItem (27, U8 ("Grados: teclas y pads…"));
+    m.addItem (28, U8 ("Atajos de teclado (metrónomo y grabar)…"));
     if (proc.host != nullptr) m.addItem (24, U8 ("Tus instrumentos VST3 / AU…"));
     m.addSeparator();
     m.addSubMenu ("Acordes de la tonalidad", chordsM);
@@ -1684,6 +1692,7 @@ void MidiSkyEditor::showMainMenu()
         else if (r == 25) newMidiFile();
         else if (r == 26) showLatencyPanel();
         else if (r == 27) showDegreeInputPanel();
+        else if (r == 28) showShortcutsPanel();
         else if (r >= 30 && r <= 32) setDayNight (r - 30);
         else if (r >= 40 && r < 40 + (int) looks().size()) { prefs->look = looks()[(size_t) (r - 40)].id; prefs->save(); }
         else if (r >= 60 && r < 64) { prefs->keyStyle = r - 60; prefs->save(); }
@@ -1794,6 +1803,9 @@ void MidiSkyEditor::openPianoRoll (File f)
             ms->on.store (false);
             return true;
         };
+        Component::SafePointer<MidiSkyEditor> safeEd (this);
+        rollWindow->roll().shortcutFor = [safeEd] (const KeyPress& k) { return safeEd != nullptr ? safeEd->prefs->shortcutFor (k) : -1; };
+        rollWindow->roll().onRecordKey = [safeEd] { if (auto* ed = safeEd.getComponent()) ed->proc.recorder.toggle(); };
         Component::SafePointer<MidiSkyEditor> safe (this);
         rollWindow->onClose = [safe]
         {
@@ -1951,17 +1963,9 @@ static int normalisedKey (const KeyPress& k)
 
 bool MidiSkyEditor::keyPressed (const KeyPress& key)
 {
-    // Enter: para el metrónomo si está sonando (Enter normal o el del teclado numérico)
-    {
-        const int kc = key.getKeyCode();
-        if ((kc == KeyPress::returnKey || kc == 3) && ! DegreeInputPanel::capturing && proc.metroSettings.on.load())
-        {
-            proc.metroSettings.on.store (false);
-            rail.metroBtn.setActive (false);
-            return true;
-        }
-    }
-    if (! prefs->degreeKeysOn || DegreeInputPanel::capturing) return false;
+    if (DegreeInputPanel::capturing) return false;
+    if (runShortcut (prefs->shortcutFor (key))) return true;
+    if (! prefs->degreeKeysOn) return false;
     const auto mods = key.getModifiers();
     if (mods.isCommandDown() || mods.isCtrlDown() || mods.isAltDown()) return false;
     const int code = normalisedKey (key);
@@ -1972,6 +1976,40 @@ bool MidiSkyEditor::keyPressed (const KeyPress& key)
             return true;
         }
     return false;
+}
+
+bool MidiSkyEditor::runShortcut (int id)
+{
+    // Atajos de teclado (los eliges en ☰ > Atajos de teclado)
+    if (id == Prefs::scMetro)
+    {
+        const bool on = ! proc.metroSettings.on.load();
+        proc.metroSettings.on.store (on);
+        rail.metroBtn.setActive (on);
+        return true;
+    }
+    if (id == Prefs::scMetroStop)
+    {
+        if (! proc.metroSettings.on.load()) return false;   // si no suena, la tecla sigue libre
+        proc.metroSettings.on.store (false);
+        rail.metroBtn.setActive (false);
+        return true;
+    }
+    if (id == Prefs::scRecord)
+    {
+        proc.recorder.toggle();
+        return true;
+    }
+    return false;
+}
+
+void MidiSkyEditor::showShortcutsPanel()
+{
+    Component::SafePointer<MidiSkyEditor> safe (this);
+    showPopover ("atajos", "Atajos de teclado", std::make_unique<ShortcutsPanel> (winCtx, *prefs, [safe]
+    {
+        MessageManager::callAsync ([safe] { if (auto* ed = safe.getComponent()) ed->showDegreeInputPanel(); });
+    }), rail.menuBtn);
 }
 
 bool MidiSkyEditor::keyStateChanged (bool)

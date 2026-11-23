@@ -270,3 +270,26 @@ private:
     bool learnAll = false;
     int lastSeenPad = 0;
 };
+
+//==============================================================================
+// Atajos de teclado: metrónomo y grabación (los eliges tú; Mac y Windows)
+class ShortcutsPanel : public juce::Component
+{
+public:
+    ShortcutsPanel (UiContext& c, Prefs& p, std::function<void()> openDegreeKeys);
+    ~ShortcutsPanel() override;
+    void paint (juce::Graphics&) override;
+    void resized() override;
+    void mouseUp (const juce::MouseEvent&) override;
+    void mouseMove (const juce::MouseEvent&) override;
+    bool keyPressed (const juce::KeyPress&) override;
+
+private:
+    juce::Rectangle<float> slot (int row) const;
+    void listen (int row);
+    UiContext& ctx;
+    Prefs& prefs;
+    PushButton degreesBtn, defaultsBtn;
+    int listenRow = -1, hover = -1;
+    juce::String note;
+};

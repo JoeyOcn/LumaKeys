@@ -517,9 +517,78 @@ String Prefs::keyName (int code)
 {
     if (code <= 0) return U8 ("—");
     if (code == KeyPress::spaceKey) return "Espacio";
+    if (code == KeyPress::returnKey) return "Enter";
+    if (code == KeyPress::tabKey) return "Tab";
+    if (code == KeyPress::escapeKey) return "Esc";
+    if (code == KeyPress::backspaceKey) return U8 ("Borrar");
+    if (code == KeyPress::leftKey) return U8 ("Flecha ←");
+    if (code == KeyPress::rightKey) return U8 ("Flecha →");
+    if (code == KeyPress::upKey) return U8 ("Flecha ↑");
+    if (code == KeyPress::downKey) return U8 ("Flecha ↓");
     if (code >= 'a' && code <= 'z') return String::charToString ((juce_wchar) (code - 'a' + 'A'));
     if (code > 32 && code < 127) return String::charToString ((juce_wchar) code);
     return KeyPress (code).getTextDescription();
+}
+
+std::array<Prefs::Shortcut, Prefs::numShortcuts> Prefs::defaultShortcuts()
+{
+    return { { { 'm', 0 }, { KeyPress::returnKey, 0 }, { 'r', 0 } } };
+}
+
+StringArray Prefs::shortcutNames()
+{
+    return { U8 ("Metrónomo: prender o apagar"), U8 ("Parar el metrónomo"), "Grabar o detener" };
+}
+
+Prefs::Shortcut Prefs::shortcutOf (const KeyPress& k)
+{
+    Shortcut s;
+    s.code = k.getKeyCode();
+    if (s.code >= 'A' && s.code <= 'Z') s.code += 'a' - 'A';
+    if (s.code == 3) s.code = KeyPress::returnKey;   // Enter del teclado numérico (Mac)
+    s.mods = k.getModifiers().getRawFlags()
+             & (ModifierKeys::shiftModifier | ModifierKeys::ctrlModifier | ModifierKeys::altModifier | ModifierKeys::commandModifier);
+    return s;
+}
+
+String Prefs::shortcutName (Shortcut s)
+{
+    if (s.code <= 0) return U8 ("—");
+    const ModifierKeys m (s.mods);
+    String t;
+   #if JUCE_MAC
+    if (m.isCtrlDown())    t << "Ctrl + ";
+    if (m.isAltDown())     t << U8 ("Opción + ");
+    if (m.isShiftDown())   t << "Shift + ";
+    if (m.isCommandDown()) t << "Cmd + ";
+   #else
+    if (m.isCtrlDown())    t << "Ctrl + ";
+    if (m.isAltDown())     t << "Alt + ";
+    if (m.isShiftDown())   t << "Shift + ";
+   #endif
+    return t + keyName (s.code);
+}
+
+int Prefs::shortcutFor (const KeyPress& k) const
+{
+    const auto s = shortcutOf (k);
+    if (s.code <= 0) return -1;
+    for (int i = 0; i < numShortcuts; ++i)
+        if (shortcuts[(size_t) i] == s) return i;
+    return -1;
+}
+
+void Prefs::assignShortcut (int id, Shortcut s)
+{
+    if (id < 0 || id >= numShortcuts) return;
+    if (s.code > 0)
+    {
+        for (auto& o : shortcuts) if (o == s) o = {};
+        // Una tecla sola (sin Cmd/Ctrl/Alt) que usaba un grado: se le quita al grado
+        if ((s.mods & ~ModifierKeys::shiftModifier) == 0)
+            for (auto& dk : degreeKeys) if (dk == s.code) dk = 0;
+    }
+    shortcuts[(size_t) id] = s;
 }
 
 String Prefs::padName (int code)
@@ -760,6 +829,13 @@ Prefs::Prefs()
 
     if (auto xml = file->getXmlValue ("pieces"))
         pieces.read (*xml);
+    {
+        auto sc = StringArray::fromTokens (file->getValue ("shortcuts", ""), ",", "");
+        if (sc.size() == numShortcuts)
+            for (int i = 0; i < numShortcuts; ++i)
+                shortcuts[(size_t) i] = { sc[i].upToFirstOccurrenceOf (":", false, false).getIntValue(),
+                                          sc[i].fromFirstOccurrenceOf (":", false, false).getIntValue() };
+    }
     degreeKeysOn = file->getBoolValue ("degreeKeysOn", true);
     degreePadsOn = file->getBoolValue ("degreePadsOn", true);
     {
@@ -879,6 +955,9 @@ void Prefs::save (bool notify)
         file->setValue ("degreeKeys", keys.joinIntoString (","));
         file->setValue ("degreePads", pads.joinIntoString (","));
         file->setValue ("degreeKeysOn", degreeKeysOn);
+        StringArray sc;
+        for (auto& k : shortcuts) sc.add (String (k.code) + ":" + String (k.mods));
+        file->setValue ("shortcuts", sc.joinIntoString (","));
         file->setValue ("degreePadsOn", degreePadsOn);
     }
 

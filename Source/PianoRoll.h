@@ -23,7 +23,9 @@ public:
     std::function<void (const juce::File&)> onConvertToAudio;
     std::function<float()> audioProgress;   // 0..1 mientras se pasa a audio este archivo; -1 si no
     std::function<void (bool accent)> onMetroClick;   // un clic del metrónomo (lo toca el procesador)
-    std::function<bool()> onStopMetronome;            // Enter: apaga el metrónomo de MidiCat (true si estaba sonando)
+    std::function<bool()> onStopMetronome;            // apaga el metrónomo de MidiCat (true si estaba sonando)
+    std::function<int (const juce::KeyPress&)> shortcutFor;   // tus atajos de teclado (-1 si no es uno)
+    std::function<void()> onRecordKey;                // el atajo de grabar
     void setStatus (const juce::String& s) { status = s; repaint (0, 0, getWidth(), 64); }
 
     void paint (juce::Graphics&) override;
