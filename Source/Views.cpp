@@ -65,6 +65,12 @@ namespace draw
         g.fillPath (p);
         g.setColour (border);
         g.strokePath (p, PathStrokeType (pal.pixel ? jmax (2.0f, 2.0f * k) : 1.0f));
+        if (pal.modern && r.getHeight() > 16.0f && r.getWidth() > 24.0f)
+        {
+            const float rad = jmin (pal.radius * k * radiusScale, r.getHeight() * 0.5f);
+            g.setColour (Colours::white.withAlpha (pal.dark ? 0.07f : 0.8f));
+            g.fillRect (r.getX() + rad, r.getY() + 1.0f, r.getWidth() - rad * 2.0f, 1.0f);
+        }
         if (pal.ornate && r.getHeight() > 30.0f)
         {
             auto inner = panelPath (r.reduced (4.0f * k), pal, k, radiusScale * 0.6f);
@@ -99,6 +105,24 @@ namespace draw
             g.setGradientFill (band);
             g.fillRect (r);
         }
+        if (pal.modern)
+        {
+            static Image dotsDark, dotsLight;
+            auto& tile = pal.dark ? dotsDark : dotsLight;
+            if (! tile.isValid())
+            {
+                tile = Image (Image::ARGB, 14, 14, true);
+                Graphics tg (tile);
+                tg.setColour (pal.dark ? Colours::white.withAlpha (0.05f) : Colours::black.withAlpha (0.06f));
+                tg.fillRect (6, 6, 2, 2);
+            }
+            g.setTiledImageFill (tile, roundToInt (r.getX()), roundToInt (r.getY()), 1.0f);
+            g.fillRect (r);
+            ColourGradient sheen (Colours::white.withAlpha (pal.dark ? 0.035f : 0.25f), r.getX(), r.getY(),
+                                  Colours::white.withAlpha (0.0f), r.getX(), r.getY() + r.getHeight() * 0.35f, false);
+            g.setGradientFill (sheen);
+            g.fillRect (r);
+        }
         if (pal.pixel)
         {
             g.setColour (Colours::white.withAlpha (0.035f));
@@ -108,54 +132,86 @@ namespace draw
         }
     }
 
-    void themeOverlay (Graphics& g, Rectangle<float> r, const Palette& pal)
+    Path chassisPath (Rectangle<float> r, const Palette& pal, float k)
     {
-        const auto& t = pal.theme;
-        if (t == "manana")
+        const float R = jlimit (8.0f, 30.0f, 16.0f * k);
+        Path p;
+        if (pal.pixel)
         {
-            ColourGradient gr (Colour (0xffe8f1ff).withAlpha (0.16f), r.getX(), r.getY(),
-                               Colour (0xffe8f1ff).withAlpha (0.0f), r.getX() + r.getWidth() * 0.55f, r.getY() + r.getHeight() * 0.6f, false);
-            g.setGradientFill (gr);
+            // Esquinas redondas "pixeladas", en escalones
+            const float st = jmax (3.0f, 4.0f * k);
+            const int n = 4;
+            p.startNewSubPath (r.getX() + st * n, r.getY());
+            p.lineTo (r.getRight() - st * n, r.getY());
+            for (int i = n - 1; i >= 0; --i) { p.lineTo (r.getRight() - st * (float) i, r.getY() + st * (float) (n - 1 - i)); p.lineTo (r.getRight() - st * (float) i, r.getY() + st * (float) (n - i)); }
+            p.lineTo (r.getRight(), r.getBottom() - st * n);
+            for (int i = 1; i <= n; ++i) { p.lineTo (r.getRight() - st * (float) (i - 1), r.getBottom() - st * (float) (n - i)); p.lineTo (r.getRight() - st * (float) i, r.getBottom() - st * (float) (n - i)); }
+            p.lineTo (r.getX() + st * n, r.getBottom());
+            for (int i = n - 1; i >= 0; --i) { p.lineTo (r.getX() + st * (float) i, r.getBottom() - st * (float) (n - 1 - i)); p.lineTo (r.getX() + st * (float) i, r.getBottom() - st * (float) (n - i)); }
+            p.lineTo (r.getX(), r.getY() + st * n);
+            for (int i = 1; i <= n; ++i) { p.lineTo (r.getX() + st * (float) (i - 1), r.getY() + st * (float) (n - i)); p.lineTo (r.getX() + st * (float) i, r.getY() + st * (float) (n - i)); }
+            p.closeSubPath();
+            return p;
+        }
+        p.addRoundedRectangle (r, R);
+        return p;
+    }
+
+    void chassis (Graphics& g, Rectangle<float> r, const Palette& pal, float k, Textures& tex, bool backdrop)
+    {
+        if (backdrop)
+        {
+            g.setColour (Colour (0xff0b0b0d));
             g.fillRect (r);
         }
-        else if (t == "tarde")
+        auto outer = r.reduced (0.5f);
+        const auto path = chassisPath (outer, pal, k);
         {
-            g.setColour (Colour (0xffffb35a).withAlpha (0.05f));
-            g.fillRect (r);
-            const float spots[5][3] = { { 0.20f, 0.28f, 0.20f }, { 0.62f, 0.16f, 0.15f }, { 0.80f, 0.60f, 0.19f }, { 0.38f, 0.80f, 0.17f }, { 0.50f, 0.45f, 0.10f } };
-            for (auto& s : spots)
+            Graphics::ScopedSaveState ss (g);
+            g.reduceClipRegion (path);
+            body (g, r, pal, tex);
+            themeScene (g, r, pal);
+
+            // Sombra interior suave en todo el borde: da profundidad al marco
+            if (! pal.pixel)
             {
-                const float cx = r.getX() + r.getWidth() * s[0], cy = r.getY() + r.getHeight() * s[1];
-                const float rad = jmax (r.getWidth(), r.getHeight()) * s[2];
-                ColourGradient sp (Colour (0xffffc878).withAlpha (0.17f), cx, cy, Colour (0xffffc878).withAlpha (0.0f), cx + rad, cy, true);
-                g.setGradientFill (sp);
-                g.fillEllipse (cx - rad, cy - rad, rad * 2.0f, rad * 2.0f);
+                const float depth = (pal.modern ? 5.0f : 9.0f) * k;
+                const int steps = 6;
+                for (int i = 0; i < steps; ++i)
+                {
+                    const float t = (float) i / (float) steps;
+                    auto rr = outer.reduced (depth * t);
+                    g.setColour (Colours::black.withAlpha ((pal.dark ? 0.10f : 0.045f) * (1.0f - t)));
+                    g.strokePath (chassisPath (rr, pal, k * (1.0f - t * 0.4f)), PathStrokeType (depth / (float) steps + 0.6f));
+                }
             }
         }
-        else if (t == "murasaki")
+
+        // Bisel: filo oscuro por fuera y luz por dentro (más brillante arriba)
+        g.setColour (Colours::black.withAlpha (pal.dark ? 0.75f : 0.35f));
+        g.strokePath (path, PathStrokeType (pal.pixel ? jmax (2.0f, 2.0f * k) : 1.0f));
+        if (! pal.pixel)
         {
-            ColourGradient v (Colour (0xff4b2c9e).withAlpha (0.30f), r.getX(), r.getY(), Colour (0xff2c1670).withAlpha (0.38f), r.getX(), r.getBottom(), false);
-            g.setGradientFill (v);
-            g.fillRect (r);
-            ColourGradient ray (Colour (0xffffaa46).withAlpha (0.0f), r.getX(), r.getY(), Colour (0xffffaa46).withAlpha (0.0f), r.getRight(), r.getBottom(), false);
-            ray.addColour (0.47, Colour (0xffffaa46).withAlpha (0.0f));
-            ray.addColour (0.53, Colour (0xffffaa46).withAlpha (0.22f));
-            ray.addColour (0.58, Colour (0xffffc46e).withAlpha (0.10f));
-            ray.addColour (0.64, Colour (0xffffaa46).withAlpha (0.0f));
-            g.setGradientFill (ray);
-            g.fillRect (r);
+            auto inner = outer.reduced (1.2f);
+            ColourGradient hl (Colours::white.withAlpha (pal.dark ? (pal.modern ? 0.13f : 0.17f) : 0.75f), 0.0f, inner.getY(),
+                               Colours::white.withAlpha (pal.dark ? 0.02f : 0.15f), 0.0f, inner.getBottom(), false);
+            g.setGradientFill (hl);
+            g.strokePath (chassisPath (inner, pal, k * 0.94f), PathStrokeType (1.0f));
         }
-        else if (t == "noche")
+
+        // Detalles por estilo
+        if (pal.lacquer || pal.ornate)
         {
-            g.setColour (Colours::black.withAlpha (0.20f));
-            g.fillRect (r);
-            const auto c = Point<float> (r.getCentreX(), r.getY() + r.getHeight() * 0.32f);
-            ColourGradient vig (Colours::black.withAlpha (0.0f), c.x, c.y, Colours::black.withAlpha (0.45f), c.x + r.getWidth() * 0.65f, c.y, true);
-            g.setGradientFill (vig);
-            g.fillRect (r);
-            ColourGradient lamp (Colour (0xffffcd8c).withAlpha (0.10f), c.x, c.y, Colour (0xffffcd8c).withAlpha (0.0f), c.x + r.getWidth() * 0.35f, c.y, true);
-            g.setGradientFill (lamp);
-            g.fillRect (r);
+            auto rim = outer.reduced (6.0f * k);
+            g.setColour (pal.accent.withAlpha (pal.lacquer ? 0.38f : 0.32f));
+            g.strokePath (chassisPath (rim, pal, k * 0.65f), PathStrokeType (pal.lacquer ? 0.9f : 0.8f));
+            if (pal.ornate)
+                g.strokePath (chassisPath (rim.reduced (3.0f * k), pal, k * 0.5f), PathStrokeType (0.6f));
+        }
+        else if (pal.modern)
+        {
+            g.setColour ((pal.dark ? Colours::white : Colours::black).withAlpha (0.06f));
+            g.strokePath (chassisPath (outer.reduced (5.0f * k), pal, k * 0.7f), PathStrokeType (1.0f));
         }
     }
 
@@ -190,6 +246,37 @@ namespace draw
                 p.startNewSubPath (cc + Point<float> (std::cos (a), std::sin (a)) * (s * 0.30f));
                 p.lineTo (cc + Point<float> (std::cos (a), std::sin (a)) * (s * 0.40f));
             }
+        }
+        else if (name == "moon")
+        {
+            // Luna creciente: un círculo al que se le recorta otro
+            const auto cc = P (12, 12);
+            const float R = s * 0.33f;
+            Path outerC, both;
+            outerC.addEllipse (cc.x - R, cc.y - R, R * 2.0f, R * 2.0f);
+            both.addEllipse (cc.x - R, cc.y - R, R * 2.0f, R * 2.0f);
+            both.addEllipse (cc.x - R * 0.35f, cc.y - R * 1.25f, R * 1.9f, R * 1.9f);
+            both.setUsingNonZeroWinding (false);
+            Graphics::ScopedSaveState ss (g);
+            g.reduceClipRegion (outerC);
+            g.fillPath (both);
+            return;
+        }
+        else if (name == "theme")
+        {
+            p.startNewSubPath (P (2.5f, 19)); p.lineTo (P (9, 9)); p.lineTo (P (13, 14.5f)); p.lineTo (P (15.5f, 11.5f)); p.lineTo (P (21.5f, 19));
+            p.closeSubPath();
+            const auto sc = P (17, 6);
+            p.addEllipse (sc.x - s * 0.09f, sc.y - s * 0.09f, s * 0.18f, s * 0.18f);
+        }
+        else if (name == "restore")
+        {
+            const auto cc = P (12, 12.5f);
+            p.addCentredArc (cc.x, cc.y, s * 0.32f, s * 0.32f, 0.0f, -2.4f, 2.6f, true);
+            const auto a = cc + Point<float> (std::sin (-2.4f), -std::cos (-2.4f)) * (s * 0.32f);
+            p.startNewSubPath (a + Point<float> (s * 0.17f, 0.0f));
+            p.lineTo (a);
+            p.lineTo (a + Point<float> (0.0f, -s * 0.17f));
         }
         else if (name == "palette")
         {
@@ -337,6 +424,29 @@ void Knob::paint (Graphics& g)
     const float a0 = -MathConstants<float>::pi * 0.75f, a1 = MathConstants<float>::pi * 0.75f;
     const float av = a0 + (a1 - a0) * value;
 
+    if (pal.modern)
+    {
+        const float ar = r - 2.0f;
+        const float thick = jmax (2.0f, d * 0.07f);
+        Path track, val;
+        track.addCentredArc (c.x, c.y, ar, ar, 0.0f, a0, a1, true);
+        val.addCentredArc (c.x, c.y, ar, ar, 0.0f, a0, av, true);
+        g.setColour ((pal.dark ? Colours::white : Colours::black).withAlpha (0.10f));
+        g.strokePath (track, PathStrokeType (thick, PathStrokeType::curved, PathStrokeType::rounded));
+        g.setColour (pal.accent);
+        g.strokePath (val, PathStrokeType (thick, PathStrokeType::curved, PathStrokeType::rounded));
+        const float ir = r * 0.62f;
+        g.setColour (pal.knob);
+        g.fillEllipse (c.x - ir, c.y - ir, ir * 2.0f, ir * 2.0f);
+        g.setColour ((pal.dark ? Colours::white : Colours::black).withAlpha (0.10f));
+        g.drawEllipse (c.x - ir, c.y - ir, ir * 2.0f, ir * 2.0f, 1.0f);
+        const auto p0 = c + Point<float> (std::sin (av), -std::cos (av)) * (ir * 0.35f);
+        const auto p1 = c + Point<float> (std::sin (av), -std::cos (av)) * (ir - 2.5f);
+        g.setColour (pal.knobLine);
+        g.drawLine ({ p0, p1 }, 2.2f);
+        return;
+    }
+
     for (int i = 0; i <= 10; ++i)
     {
         const float a = a0 + (a1 - a0) * (float) i / 10.0f;
@@ -422,7 +532,16 @@ void IconButton::paint (Graphics& g)
         g.setColour ((lightOnDark ? Colours::white : pal.text).withAlpha (0.14f));
         g.fillEllipse (b);
     }
-    const auto col = lightOnDark ? Colours::white : pal.text;
+    const auto col = lightOnDark ? Colours::white : (active && label.isNotEmpty() ? pal.text : pal.text);
+    if (label.isNotEmpty() && b.getWidth() > b.getHeight() * 2.2f)
+    {
+        auto ir = b.removeFromLeft (b.getHeight());
+        draw::icon (g, iconId, ir.reduced (ir.getWidth() * 0.24f).translated (b.getHeight() * 0.06f, 0.0f), col, 1.6f);
+        g.setColour (col);
+        g.setFont (draw::fit (ctx.fonts, pal.uiFont, label, jmin (14.0f, b.getHeight() * 0.54f), b.getWidth() - 6.0f, false));
+        g.drawText (label, b.withTrimmedRight (6.0f), Justification::centredLeft, false);
+        return;
+    }
     draw::icon (g, iconId, b.reduced (b.getWidth() * 0.22f), col, 1.6f);
 }
 
@@ -476,17 +595,21 @@ void FieldButton::mouseUp (const MouseEvent& e)
 //==============================================================================
 RailBar::RailBar (UiContext& c)
     : midi (c, "MIDI"), key (c, "Tonalidad"), scale (c, "Escala"), latency (c, "Latencia"),
-      themeBtn (c, "sun", "Tema de luz"),
+      dayBtn (c, "sun", U8 ("Modo día / noche")),
+      themeBtn (c, "theme", U8 ("Temas de luz")),
       skinBtn (c, "palette", "Skin"),
       transpBtn (c, "transp", "Modo transparente"),
       splitBtn (c, "split", "Separar o unir el teclado"),
       windowsBtn (c, "windows", "Separar secciones en ventanas"),
+      resetBtn (c, "restore", U8 ("Regresar todo a su lugar")),
       hideBtn (c, "eyeoff", U8 ("Ocultar parámetros")),
       menuBtn (c, "menu", U8 ("Menú")),
       ctx (c)
 {
-    for (Component* comp : std::initializer_list<Component*> { &midi, &key, &scale, &latency, &themeBtn, &skinBtn, &transpBtn, &splitBtn, &windowsBtn, &hideBtn, &menuBtn })
+    for (Component* comp : std::initializer_list<Component*> { &midi, &key, &scale, &latency, &dayBtn, &themeBtn, &skinBtn, &transpBtn, &splitBtn, &windowsBtn, &resetBtn, &hideBtn, &menuBtn })
         addAndMakeVisible (comp);
+    resetBtn.label = "Restablecer";
+    resetBtn.setActive (true);
     midi.setLed (0);
 }
 
@@ -541,15 +664,9 @@ void RailBar::paint (Graphics& g)
             g.fillEllipse (pins[i].x - rr, pins[i].y - rr, rr * 2.0f, rr * 2.0f);
         }
         g.setColour (pal.text);
-        g.setFont (pal.displayFont == FontKind::pixel ? ctx.fonts.pixel (19.0f * k) : ctx.fonts.serif (24.0f * k, true));
+        g.setFont (pal.displayFont == FontKind::pixel ? ctx.fonts.pixel (19.0f * k)
+                   : (pal.displayFont == FontKind::sans ? ctx.fonts.ui (22.0f * k, 2) : ctx.fonts.serif (24.0f * k, true)));
         g.drawText ("MidiSky", logo.withTrimmedLeft (s + 10.0f * k), Justification::centredLeft, false);
-    }
-
-    if (status.isNotEmpty())
-    {
-        g.setColour (pal.text);
-        g.setFont (draw::fit (ctx.fonts, pal.uiFont, status, 13.0f * k, statusArea.getWidth(), false));
-        g.drawText (status, statusArea, Justification::centred, true);
     }
 }
 
@@ -562,24 +679,28 @@ void RailBar::resized()
     b.removeFromLeft (gap);
 
     auto place  = [&] (Component& c, int w) { c.setBounds (b.removeFromLeft (w)); b.removeFromLeft (gap); };
-    auto placeR = [&] (Component& c)        { c.setBounds (b.removeFromRight (ib)); b.removeFromRight (gap); };
+    auto placeR = [&] (Component& c, int w) { c.setBounds (b.removeFromRight (w)); b.removeFromRight (gap); };
 
     for (auto* f : { &midi, &key, &scale, &latency }) f->k = k;
 
-    placeR (menuBtn);
-    placeR (hideBtn);
+    placeR (menuBtn, ib);
+    placeR (hideBtn, ib);
+    resetBtn.setVisible (showReset);
+    if (showReset) placeR (resetBtn, roundToInt (136.0f * k));
 
     const bool show = ! ctx.vis.hideParams;
-    for (auto* c : std::initializer_list<Component*> { &midi, &key, &scale, &latency, &themeBtn, &skinBtn, &transpBtn, &splitBtn, &windowsBtn })
+    for (auto* c : std::initializer_list<Component*> { &midi, &key, &scale, &latency, &dayBtn, &themeBtn, &skinBtn, &transpBtn, &splitBtn, &windowsBtn })
         c->setVisible (show);
 
     if (show)
     {
-        placeR (windowsBtn);
-        placeR (splitBtn);
-        placeR (transpBtn);
-        placeR (skinBtn);
-        placeR (themeBtn);
+        const int sib = roundToInt ((float) ib * 0.92f);
+        placeR (windowsBtn, sib);
+        placeR (splitBtn, sib);
+        placeR (transpBtn, sib);
+        placeR (skinBtn, sib);
+        placeR (themeBtn, sib);
+        placeR (dayBtn, sib);
 
         const int avail = b.getWidth();
         const float want = (220.0f + 140.0f + 160.0f + 110.0f) * k + 4.0f * (float) gap;
@@ -593,17 +714,64 @@ void RailBar::resized()
 }
 
 //==============================================================================
+// Aviso corto
+//==============================================================================
+void Toast::show (const String& t, double seconds)
+{
+    text = t;
+    until = Time::getMillisecondCounterHiRes() + seconds * 1000.0;
+    setVisible (true);
+    toFront (false);
+    repaint();
+}
+
+void Toast::tick (double nowMs)
+{
+    if (isVisible() && nowMs > until) setVisible (false);
+}
+
+void Toast::paint (Graphics& g)
+{
+    const auto& pal = ctx.vis.pal;
+    auto f = ctx.fonts.label (pal.uiFont, 13.5f, 1);
+    const float w = jmin ((float) getWidth(), draw::textWidth (f, text) + 40.0f);
+    auto r = getLocalBounds().toFloat().withSizeKeepingCentre (w, (float) getHeight()).reduced (1.0f);
+    const auto bg = pal.dark ? Colour (0xff17171a) : Colour (0xfff8f8f8);
+    g.setColour (Colours::black.withAlpha (0.25f));
+    g.fillRoundedRectangle (r.translated (0.0f, 2.0f), r.getHeight() * 0.5f);
+    g.setColour (bg.withAlpha (0.96f));
+    g.fillRoundedRectangle (r, r.getHeight() * 0.5f);
+    g.setColour (pal.accent.withAlpha (0.7f));
+    g.drawRoundedRectangle (r, r.getHeight() * 0.5f, 1.0f);
+    g.setColour (pal.dark ? Colour (0xffefeff2) : Colour (0xff17171a));
+    g.setFont (f);
+    g.drawText (text, r, Justification::centred, true);
+}
+
+//==============================================================================
 // Selector de skins
 //==============================================================================
+static int firstModernSkin()
+{
+    const auto& l = skins();
+    for (int i = 0; i < (int) l.size(); ++i) if (l[(size_t) i].modern) return i;
+    return (int) l.size();
+}
+
 SkinPicker::SkinPicker (UiContext& c, int cur) : ctx (c), current (cur)
 {
-    const int rows = ((int) skins().size() + 3) / 4;
-    setSize (4 * 112 + 24, rows * 96 + 52);
+    const int fm = firstModernSkin();
+    const int rowsA = (fm + 3) / 4, rowsB = ((int) skins().size() - fm + 3) / 4;
+    setSize (4 * 112 + 24, 40 + rowsA * 96 + (rowsB > 0 ? 30 + rowsB * 96 : 0) + 10);
 }
 
 Rectangle<float> SkinPicker::cell (int i) const
 {
-    return { 12.0f + (float) (i % 4) * 112.0f, 40.0f + (float) (i / 4) * 96.0f, 112.0f, 96.0f };
+    const int fm = firstModernSkin();
+    const int rowsA = (fm + 3) / 4;
+    if (i < fm) return { 12.0f + (float) (i % 4) * 112.0f, 40.0f + (float) (i / 4) * 96.0f, 112.0f, 96.0f };
+    const int j = i - fm;
+    return { 12.0f + (float) (j % 4) * 112.0f, 40.0f + (float) rowsA * 96.0f + 30.0f + (float) (j / 4) * 96.0f, 112.0f, 96.0f };
 }
 
 void SkinPicker::paint (Graphics& g)
@@ -611,7 +779,10 @@ void SkinPicker::paint (Graphics& g)
     const auto& pal = ctx.vis.pal;
     g.setColour (pal.text);
     g.setFont (ctx.fonts.ui (15.0f, 2));
-    g.drawText ("Skin", Rectangle<float> (16.0f, 10.0f, 240.0f, 22.0f), Justification::centredLeft, false);
+    g.drawText (U8 ("Skins japonesas y clásicas"), Rectangle<float> (16.0f, 10.0f, 300.0f, 22.0f), Justification::centredLeft, false);
+    const int fm = firstModernSkin();
+    if (fm < (int) skins().size())
+        g.drawText (U8 ("Modernas (estilo sintetizador)"), Rectangle<float> (16.0f, cell (fm).getY() - 26.0f, 300.0f, 22.0f), Justification::centredLeft, false);
 
     const auto& list = skins();
     for (int i = 0; i < (int) list.size(); ++i)
@@ -629,6 +800,11 @@ void SkinPicker::paint (Graphics& g)
             clip.addRoundedRectangle (sw, 5.0f);
             g.reduceClipRegion (clip);
             draw::body (g, sw, sp, ctx.tex);
+            auto railR = sw.reduced (5.0f, 0.0f).withHeight (9.0f).translated (0.0f, 5.0f);
+            g.setColour (s.rail);
+            g.fillRoundedRectangle (railR, jmin (3.0f, s.radius * 0.4f));
+            g.setColour (s.accent);
+            g.fillEllipse (railR.getRight() - 8.0f, railR.getY() + 2.5f, 4.0f, 4.0f);
             auto keyR = sw.withTrimmedTop (sw.getHeight() * 0.45f).reduced (sw.getWidth() * 0.12f, 0.0f);
             g.setColour (s.keyWhite);
             g.fillRect (keyR);
@@ -661,6 +837,120 @@ void SkinPicker::mouseMove (const MouseEvent& e)
 void SkinPicker::mouseUp (const MouseEvent& e)
 {
     for (int i = 0; i < (int) skins().size(); ++i)
+        if (cell (i).contains (e.position))
+        {
+            current = i;
+            repaint();
+            if (onPick) onPick (i);
+            return;
+        }
+}
+
+//==============================================================================
+// Selector de temas (con modo día / noche / automático)
+//==============================================================================
+ThemePicker::ThemePicker (UiContext& c, int cur, int dn)
+    : ctx (c), mode (c, { U8 ("Día"), "Noche", U8 ("Auto") }), current (cur), modeSel (dn)
+{
+    addAndMakeVisible (mode);
+    mode.setSelected (dn);
+    mode.onChange = [this] (int i) { modeSel = i; repaint(); if (onMode) onMode (i); };
+    const int rows = ((int) themes().size() + 3) / 4;
+    setSize (4 * 152 + 24, 52 + rows * 112 + 40);
+}
+
+bool ThemePicker::showsNight() const
+{
+    if (modeSel == 1) return true;
+    if (modeSel == 2) { const int h = Time::getCurrentTime().getHours(); return h >= 19 || h < 7; }
+    return false;
+}
+
+void ThemePicker::resized()
+{
+    mode.setBounds (getWidth() - 12 - 230, 10, 230, 30);
+}
+
+Rectangle<float> ThemePicker::cell (int i) const
+{
+    return { 12.0f + (float) (i % 4) * 152.0f, 52.0f + (float) (i / 4) * 112.0f, 152.0f, 112.0f };
+}
+
+void ThemePicker::paint (Graphics& g)
+{
+    const auto& pal = ctx.vis.pal;
+    g.setColour (pal.text);
+    g.setFont (ctx.fonts.ui (15.0f, 2));
+    g.drawText ("Temas de luz", Rectangle<float> (16.0f, 14.0f, 240.0f, 22.0f), Justification::centredLeft, false);
+
+    const bool night = showsNight();
+    const auto& list = themes();
+    Palette base = pal;
+    static_cast<Skin&> (base) = skins()[(size_t) skinIndex (pal.id)];
+
+    for (int i = 0; i < (int) list.size(); ++i)
+    {
+        auto r = cell (i).reduced (5.0f);
+        if (i == hover) { g.setColour (pal.text.withAlpha (0.07f)); g.fillRoundedRectangle (r, 7.0f); }
+        auto sw = r.removeFromTop (r.getHeight() - 22.0f).reduced (6.0f, 4.0f);
+
+        Palette tp = base;
+        tp.themeIdx = i;
+        tp.night = night;
+        if (pal.lightMode == 0 && tp.look().hasKeyLight) tp.light = tp.look().keyLight;
+        {
+            Graphics::ScopedSaveState ss (g);
+            Path clip;
+            clip.addRoundedRectangle (sw, 6.0f);
+            g.reduceClipRegion (clip);
+            draw::body (g, sw, tp, ctx.tex);
+            draw::themeScene (g, sw, tp);
+            // Maqueta pequeña de la interfaz
+            auto railR = sw.reduced (6.0f, 0.0f).withHeight (8.0f).translated (0.0f, 5.0f);
+            g.setColour (tp.rail); g.fillRoundedRectangle (railR, 2.0f);
+            auto atrilR = Rectangle<float> (sw.getX() + 6.0f, railR.getBottom() + 4.0f, sw.getWidth() - 12.0f, sw.getHeight() * 0.36f);
+            g.setColour (tp.atril); g.fillRoundedRectangle (atrilR, 2.0f);
+            const float cr = atrilR.getHeight() * 0.36f;
+            g.setColour (tp.ringLine); g.drawEllipse (atrilR.getX() + 6.0f, atrilR.getCentreY() - cr, cr * 2.0f, cr * 2.0f, 1.0f);
+            auto keyR = Rectangle<float> (sw.getX() + 6.0f, atrilR.getBottom() + 5.0f, sw.getWidth() - 12.0f, sw.getBottom() - atrilR.getBottom() - 10.0f);
+            g.setColour (tp.keyWhite); g.fillRect (keyR);
+            const float kw = keyR.getWidth() / 10.0f;
+            g.setColour (tp.light);
+            for (int lk : { 2, 4, 6 }) g.fillRect (keyR.getX() + kw * (float) lk + 0.5f, keyR.getY(), kw - 1.0f, keyR.getHeight());
+            g.setColour (tp.keyBlack);
+            for (int bk = 1; bk < 10; ++bk)
+                if (bk % 7 != 3 && bk % 7 != 0) g.fillRect (keyR.getX() + kw * (float) bk - kw * 0.28f, keyR.getY(), kw * 0.56f, keyR.getHeight() * 0.6f);
+            draw::themeLight (g, sw, tp);
+        }
+        g.setColour (i == current ? pal.accent : pal.text.withAlpha (0.2f));
+        g.drawRoundedRectangle (sw, 6.0f, i == current ? 2.0f : 1.0f);
+        g.setColour (i == current ? pal.text : pal.dim);
+        g.setFont (ctx.fonts.ui (12.5f, i == current ? 2 : 1));
+        g.drawText (list[(size_t) i].name, r, Justification::centred, false);
+    }
+
+    const int shown = hover >= 0 ? hover : current;
+    if (shown >= 0 && shown < (int) list.size())
+    {
+        g.setColour (pal.dim);
+        g.setFont (ctx.fonts.ui (13.0f, 0));
+        g.drawText (list[(size_t) shown].name + ": " + list[(size_t) shown].description
+                        + (night ? U8 (" (noche)") : U8 (" (día)")),
+                    Rectangle<float> (16.0f, (float) getHeight() - 34.0f, (float) getWidth() - 32.0f, 24.0f), Justification::centredLeft, true);
+    }
+}
+
+void ThemePicker::mouseMove (const MouseEvent& e)
+{
+    int h = -1;
+    for (int i = 0; i < (int) themes().size(); ++i)
+        if (cell (i).contains (e.position)) h = i;
+    if (h != hover) { hover = h; repaint(); }
+}
+
+void ThemePicker::mouseUp (const MouseEvent& e)
+{
+    for (int i = 0; i < (int) themes().size(); ++i)
         if (cell (i).contains (e.position))
         {
             current = i;

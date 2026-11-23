@@ -55,12 +55,24 @@ namespace draw
     juce::Path panelPath (juce::Rectangle<float>, const Palette&, float k, float radiusScale = 1.0f);
     void body (juce::Graphics&, juce::Rectangle<float>, const Palette&, Textures&);
     void texture (juce::Graphics&, const juce::Image&, juce::Rectangle<float>, float alpha = 1.0f);
-    void themeOverlay (juce::Graphics&, juce::Rectangle<float>, const Palette&);
+    void themeLight (juce::Graphics&, juce::Rectangle<float>, const Palette&);   // luz y partículas (encima)
+    void themeScene (juce::Graphics&, juce::Rectangle<float>, const Palette&);   // paisaje, sol o luna (al fondo)
+    // Marco de la ventana con esquinas redondas, bisel y sombra interior
+    juce::Path chassisPath (juce::Rectangle<float>, const Palette&, float k);
+    void chassis (juce::Graphics&, juce::Rectangle<float>, const Palette&, float k, Textures&, bool backdrop);
     void shadowText (juce::Graphics&, const juce::String&, juce::Rectangle<float>, juce::Justification, juce::Colour, bool shadow);
     void icon (juce::Graphics&, const juce::String& name, juce::Rectangle<float>, juce::Colour, float stroke = 1.6f);
     float textWidth (const juce::Font&, const juce::String&);
     juce::Font fit (const Fonts&, FontKind, const juce::String&, float maxH, float maxW, bool display);
 }
+
+// La luz del tema ya dibujada, para no recalcularla en cada cuadro.
+struct ThemeCache
+{
+    void draw (juce::Graphics&, juce::Rectangle<float>, const Palette&, float scale);
+    juce::Image image;
+    juce::String key;
+};
 
 //==============================================================================
 // Controles propios
@@ -124,6 +136,7 @@ public:
     void setIcon (const juce::String& n) { if (n != iconId) { iconId = n; repaint(); } }
     void setActive (bool a) { if (a != active) { active = a; repaint(); } }
     std::function<void()> onClick;
+    juce::String label;          // texto junto al ícono (si cabe)
     bool framed = true;
     bool lightOnDark = false;   // para barras sobre fondos transparentes
 
@@ -164,14 +177,52 @@ public:
     void tick (double nowMs);
 
     FieldButton midi, key, scale, latency;
-    IconButton themeBtn, skinBtn, transpBtn, splitBtn, windowsBtn, hideBtn, menuBtn;
+    IconButton dayBtn, themeBtn, skinBtn, transpBtn, splitBtn, windowsBtn, resetBtn, hideBtn, menuBtn;
     float k = 1.0f;
+    void setShowReset (bool s) { if (s != showReset) { showReset = s; resized(); } }
 
 private:
     UiContext& ctx;
     juce::String status;
     double statusUntil = 0.0;
     juce::Rectangle<float> statusArea;
+    bool showReset = false;
+};
+
+//==============================================================================
+// Aviso corto que aparece debajo de la barra
+class Toast : public juce::Component
+{
+public:
+    explicit Toast (UiContext& c) : ctx (c) { setInterceptsMouseClicks (false, false); setVisible (false); }
+    void show (const juce::String& text, double seconds = 3.5);
+    void tick (double nowMs);
+    void paint (juce::Graphics&) override;
+    juce::String text;
+
+private:
+    UiContext& ctx;
+    double until = 0.0;
+};
+
+//==============================================================================
+class ThemePicker : public juce::Component
+{
+public:
+    ThemePicker (UiContext& c, int currentTheme, int dayNightMode);
+    void paint (juce::Graphics&) override;
+    void resized() override;
+    void mouseUp (const juce::MouseEvent&) override;
+    void mouseMove (const juce::MouseEvent&) override;
+    void mouseExit (const juce::MouseEvent&) override { hover = -1; repaint(); }
+    std::function<void (int)> onPick, onMode;
+
+private:
+    juce::Rectangle<float> cell (int i) const;
+    bool showsNight() const;
+    UiContext& ctx;
+    Segmented mode;
+    int current = 0, hover = -1, modeSel = 0;
 };
 
 //==============================================================================

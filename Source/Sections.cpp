@@ -33,8 +33,8 @@ void Section::resized()
 Rectangle<float> Section::contentArea() const
 {
     auto b = getLocalBounds().toFloat();
-    if (floating && ! ctx.vis.transparent) return b.reduced (14.0f * k);
-    if (floating) return b.reduced (6.0f * k);
+    if (floating && ! ctx.vis.transparent && panelKind() == PanelKind::atril) return b.reduced (12.0f * k);
+    if (floating && ctx.vis.transparent) return b.reduced (6.0f * k);
     switch (panelKind())
     {
         case PanelKind::atril: return b.reduced (6.0f * k, 4.0f * k);
@@ -61,9 +61,9 @@ void Section::paint (Graphics& g)
 
     if (floating && ! ctx.vis.transparent)
     {
-        draw::body (g, b, pal, ctx.tex);
+        // El marco y el fondo los dibuja la ventana; aquí solo el panel
         const auto fill = panelKind() == PanelKind::fall ? pal.fall : (panelKind() == PanelKind::keys ? pal.keysBlock : pal.atril);
-        draw::panel (g, b.reduced (6.0f * k), fill, pal.railBorder, pal, k);
+        draw::panel (g, b.reduced (0.5f), fill, pal.railBorder, pal, k);
     }
     else if (! floating)
     {
@@ -72,9 +72,6 @@ void Section::paint (Graphics& g)
     }
 
     paintContent (g, contentArea());
-
-    if (floating && ! ctx.vis.transparent)
-        draw::themeOverlay (g, b, pal);
 }
 
 //==============================================================================
@@ -268,23 +265,38 @@ void ScoreSection::paintContent (Graphics& g, Rectangle<float> area)
     }
     else
     {
-        g.setColour (Colours::black.withAlpha (0.30f));
-        g.fillRect (paper.translated (0.0f, 6.0f * k).reduced (4.0f * k, 0.0f));
-        if (pal.paper != Tex::none)
+        // Papel con sombra suave (se dibuja una vez y se guarda)
+        const float sc = jlimit (1.0f, 2.0f, Component::getApproximateScaleFactorForComponent (this));
+        const int pad = roundToInt (18.0f * k);
+        auto box = paper.expanded ((float) pad);
+        const String key = pal.id + String (box.getWidth()) + "x" + String (box.getHeight()) + "@" + String (sc) + "k" + String (k);
+        if (key != paperKey || ! paperCache.isValid())
         {
-            g.setColour (pal.paperColour);
-            g.fillRect (paper);
-            draw::texture (g, ctx.tex.get (pal.paper), paper);
+            paperCache = Image (Image::ARGB, jmax (1, roundToInt (box.getWidth() * sc)), jmax (1, roundToInt (box.getHeight() * sc)), true);
+            Graphics pg (paperCache);
+            pg.addTransform (AffineTransform::scale (sc));
+            auto local = paper.translated (-box.getX(), -box.getY());
+            DropShadow (Colours::black.withAlpha (pal.dark ? 0.38f : 0.14f), roundToInt (12.0f * k), { 0, roundToInt (4.0f * k) })
+                .drawForPath (pg, draw::panelPath (local, pal, k, 0.4f));
+            if (pal.paper != Tex::none)
+            {
+                pg.setColour (pal.paperColour);
+                pg.fillRect (local);
+                draw::texture (pg, ctx.tex.get (pal.paper), local);
+            }
+            else
+            {
+                draw::panel (pg, local, pal.paperColour, pal.wellBorder, pal, k, 0.4f);
+            }
+            paperKey = key;
         }
-        else
-        {
-            draw::panel (g, paper, pal.paperColour, pal.wellBorder, pal, k, 0.4f);
-        }
+        g.drawImage (paperCache, box);
     }
 
     // Título y armadura sobre el papel
     g.setColour (ink);
-    g.setFont (pal.displayFont == FontKind::pixel ? ctx.fonts.pixel (12.0f * k) : ctx.fonts.serif (14.0f * k));
+    g.setFont (pal.displayFont == FontKind::pixel ? ctx.fonts.pixel (12.0f * k)
+               : (pal.displayFont == FontKind::sans ? ctx.fonts.ui (13.5f * k, 2) : ctx.fonts.serif (14.0f * k)));
     g.drawText ("Pentagrama", paper.reduced (16.0f * k, 10.0f * k).removeFromTop (18.0f * k), Justification::centredLeft, false);
 
     String sigText;
@@ -464,7 +476,8 @@ void TabletsSection::paintContent (Graphics& g, Rectangle<float> area)
         draw::panel (g, r, fill, act ? pal.accent : (tm ? Colours::white.withAlpha (0.25f) : pal.tabletBorder), pal, k * 0.6f);
 
         auto inner = r.reduced (14.0f * k, 0.0f);
-        g.setFont (pal.displayFont == FontKind::pixel ? ctx.fonts.pixel (r.getHeight() * 0.36f) : ctx.fonts.serif (r.getHeight() * 0.42f));
+        g.setFont (pal.displayFont == FontKind::pixel ? ctx.fonts.pixel (r.getHeight() * 0.36f)
+                   : (pal.displayFont == FontKind::sans ? ctx.fonts.ui (r.getHeight() * 0.38f, 1) : ctx.fonts.serif (r.getHeight() * 0.42f)));
         draw::shadowText (g, d.roman, inner, Justification::centredLeft, tm ? Colours::white.withAlpha (0.8f) : pal.dim, tm);
         g.setFont (ctx.fonts.display (pal.displayFont, r.getHeight() * 0.48f));
         draw::shadowText (g, d.symbol, inner, Justification::centredRight, tm ? Colours::white : pal.text, tm);
@@ -560,7 +573,8 @@ void ChordSection::paintContent (Graphics& g, Rectangle<float> area)
         auto l = left;
         g.setFont (ctx.fonts.label (pal.uiFont, 11.5f * k, 1));
         draw::shadowText (g, leftTop, l.removeFromTop (l.getHeight() * 0.28f), Justification::bottomLeft, dimCol, tm);
-        g.setFont (pal.displayFont == FontKind::pixel ? ctx.fonts.pixel (22.0f * k) : ctx.fonts.serif (28.0f * k, false));
+        g.setFont (pal.displayFont == FontKind::pixel ? ctx.fonts.pixel (22.0f * k)
+                   : (pal.displayFont == FontKind::sans ? ctx.fonts.ui (26.0f * k, 2) : ctx.fonts.serif (28.0f * k, false)));
         draw::shadowText (g, leftBig, l.removeFromTop (l.getHeight() * 0.55f), Justification::centredLeft, textCol, tm);
         g.setFont (ctx.fonts.label (pal.uiFont, 13.0f * k, 0));
         draw::shadowText (g, leftSub, l, Justification::topLeft, dimCol, tm);

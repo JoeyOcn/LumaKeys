@@ -67,7 +67,7 @@ jobs:
           sed -i '' -e '/<key>BundleIsRelocatable<\/key>/{n;s/<true\/>/<false\/>/;}' comp.plist
           grep -A1 BundleIsRelocatable comp.plist || true
           pkgbuild --root "$ROOT" --component-plist comp.plist --identifier com.joeyocn.midisky \
-            --version 1.1.0 --install-location / dist/MidiSky-Instalador-Mac.pkg
+            --version 1.2.0 --install-location / dist/MidiSky-Instalador-Mac.pkg
           ls -la dist
 
       - uses: actions/upload-artifact@v4

@@ -19,18 +19,28 @@ public:
     void releaseSection();
 
     Section& section;
-    IconButton dockBtn, resetBtn, pinBtn;
-    std::function<void()> onDock, onReset, onTogglePin;
+    IconButton dockBtn, restoreAllBtn, resetBtn, pinBtn;
+    std::function<void()> onDock, onRestoreAll, onReset, onTogglePin;
 
-    static constexpr int headerHeight = 26;
+    static constexpr int headerHeight = 34;
+    static constexpr int margin = 8;
+    static juce::Point<int> windowSizeFor (const Section& s) { return { s.natural.x + margin * 2, s.natural.y + headerHeight + margin }; }
 
 private:
     void timerCallback() override;
     bool transparent() const { return ctx.vis.transparent; }
-    juce::Rectangle<int> header() const { return getLocalBounds().removeFromTop (headerHeight); }
+    juce::Rectangle<int> header() const
+    {
+        return transparent() ? getLocalBounds().removeFromTop (28)
+                             : getLocalBounds().reduced (margin, 0).withTrimmedTop (4).removeFromTop (headerHeight - 6);
+    }
+    float scaleFactor() const;
 
     UiContext& ctx;
     juce::ComponentDragger dragger;
+    juce::Image background;
+    juce::String backgroundKey;
+    ThemeCache themeCache;
     float headerAlpha = 1.0f;
     bool released = false;
 };

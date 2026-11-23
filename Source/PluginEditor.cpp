@@ -41,6 +41,22 @@ void MidiSkyLook::drawCallOutBoxBackground (CallOutBox&, Graphics& g, const Path
     g.strokePath (path, PathStrokeType (1.0f));
 }
 
+void MidiSkyLook::drawCornerResizer (Graphics& g, int w, int h, bool isMouseOver, bool isMouseDragging)
+{
+    // Tres puntitos en diagonal, metidos para respetar la curva del marco
+    const auto col = (pal.dark ? Colours::white : Colours::black).withAlpha (isMouseOver || isMouseDragging ? 0.55f : 0.28f);
+    g.setColour (col);
+    const float s = (float) jmin (w, h);
+    const float d = jmax (1.6f, s * 0.11f);
+    const Point<float> base ((float) w - s * 0.42f, (float) h - s * 0.42f);
+    for (int i = 0; i < 3; ++i)
+        for (int j = 0; j <= i; ++j)
+        {
+            const Point<float> p (base.x - (float) (i - j) * d * 2.1f, base.y - (float) j * d * 2.1f);
+            g.fillEllipse (p.x - d * 0.5f, p.y - d * 0.5f, d, d);
+        }
+}
+
 //==============================================================================
 static const char* rootNamesEn[12] = { "C", "C#/Db", "D", "Eb", "E", "F", "F#/Gb", "G", "Ab", "A", "Bb", "B" };
 static const char* rootNamesEs[12] = { "Do", "Do#/Reb", "Re", "Mib", "Mi", "Fa", "Fa#/Solb", "Sol", "Lab", "La", "Sib", "Si" };
@@ -53,6 +69,7 @@ MidiSkyEditor::MidiSkyEditor (MidiSkyProcessor& p)
 
     addAndMakeVisible (rail);
     for (auto* s : sections()) addAndMakeVisible (s);
+    addChildComponent (toast);
 
     prefs->addChangeListener (this);
     vis.hideParams = prefs->hideParams;
@@ -71,7 +88,12 @@ MidiSkyEditor::MidiSkyEditor (MidiSkyProcessor& p)
     rail.key.onClick     = [this] { showKeyMenu(); };
     rail.scale.onClick   = [this] { showScaleMenu(); };
     rail.latency.onClick = [this] { showLatencyPanel(); };
-    rail.themeBtn.onClick   = [this] { showThemeMenu(); };
+    rail.themeBtn.onClick   = [this] { showThemePicker(); };
+    rail.dayBtn.onClick     = [this] { setDayNight (prefs->isNight() ? 0 : 1); };
+    rail.resetBtn.onClick   = [this]
+    {
+        MessageManager::callAsync ([safe = Component::SafePointer<MidiSkyEditor> (this)] { if (auto* ed = safe.getComponent()) ed->resetLayout(); });
+    };
     rail.skinBtn.onClick    = [this] { showSkinPicker(); };
     rail.transpBtn.onClick  = [this] { setTransparent (! prefs->transparent); };
     rail.splitBtn.onClick   = [this] { if (keyboard.floating) dock (keyboard); else detach (keyboard); };
@@ -206,6 +228,9 @@ void MidiSkyEditor::refreshPalette()
     rail.transpBtn.setActive (prefs->transparent);
     rail.splitBtn.setActive (keyboard.floating);
     rail.hideBtn.setIcon (prefs->hideParams ? "eye" : "eyeoff");
+    rail.dayBtn.setIcon (vis.pal.night ? "moon" : "sun");
+    rail.dayBtn.setActive (prefs->dayNight == 2);
+    lastNight = vis.pal.night;
     rebuildBackground();
     lastRoot = -1;
     repaint();
@@ -249,30 +274,62 @@ void MidiSkyEditor::rebuildBackground()
     g.addTransform (AffineTransform::scale (scale));
 
     const auto& pal = vis.pal;
-    const auto b = getLocalBounds().toFloat();
-    draw::body (g, b, pal, *textures);
+    draw::chassis (g, getLocalBounds().toFloat(), pal, k, *textures, true);
 
     if (! atrilBounds.isEmpty())
     {
+        Graphics::ScopedSaveState ss (g);
+        g.reduceClipRegion (draw::chassisPath (getLocalBounds().toFloat().reduced (0.5f), pal, k));
         auto a = atrilBounds.toFloat();
         draw::panel (g, a, pal.atril, pal.railBorder, pal, k);
-        auto lip = a.removeFromBottom (14.0f * k);
-        g.setColour (pal.lip);
-        g.fillPath (draw::panelPath (lip, pal, k, 0.5f));
-        g.setColour (Colours::white.withAlpha (0.08f));
-        g.fillRect (lip.withHeight (1.0f));
+        const bool lip = ! pal.modern && pal.id != "minimalista";
+        if (lip)
+        {
+            auto l = a.removeFromBottom (14.0f * k);
+            g.setColour (pal.lip);
+            g.fillPath (draw::panelPath (l, pal, k, 0.5f));
+            g.setColour (Colours::white.withAlpha (0.08f));
+            g.fillRect (l.withHeight (1.0f));
+        }
     }
 }
 
 void MidiSkyEditor::paint (Graphics& g)
 {
     if (background.isValid()) g.drawImage (background, getLocalBounds().toFloat());
-    else                      g.fillAll (vis.pal.bodyColour);
+    else                      g.fillAll (Colour (0xff0b0b0d));
 }
 
 void MidiSkyEditor::paintOverChildren (Graphics& g)
 {
-    draw::themeOverlay (g, getLocalBounds().toFloat(), vis.pal);
+    if (vis.pal.look().isEmpty()) return;
+    Graphics::ScopedSaveState ss (g);
+    // La luz del tema no va encima de los menús ni de los avisos
+    for (auto* c : getChildren())
+        if (c->isVisible() && (dynamic_cast<CallOutBox*> (c) != nullptr || c == &toast))
+            g.excludeClipRegion (c->getBounds());
+    g.reduceClipRegion (draw::chassisPath (getLocalBounds().toFloat().reduced (0.5f), vis.pal, k));
+    themeCache.draw (g, getLocalBounds().toFloat(), vis.pal, jlimit (1.0f, 2.0f, Component::getApproximateScaleFactorForComponent (this)));
+}
+
+// Medidas a escala 1 (ventana normal de 1200 x 760)
+static constexpr float kMargin = 18.0f, kGap = 10.0f, kRailH = 58.0f, kRailHidden = 50.0f,
+                       kAtrilH = 328.0f, kChordH = 118.0f, kKeysH = 190.0f;
+
+float MidiSkyEditor::naturalHeight() const
+{
+    float h = kMargin * 2.0f + (vis.hideParams ? kRailHidden : kRailH);
+    if (! circle.floating || ! score.floating || ! tablets.floating) h += kGap + kAtrilH;
+    if (! chord.floating) h += kGap + kChordH;
+    if (! keyboard.floating) h += kGap + kKeysH;
+    return h;
+}
+
+void MidiSkyEditor::fitHeightToContent (float keepK)
+{
+    const int h = jlimit (150, 2200, roundToInt (naturalHeight() * keepK));
+    if (h != getHeight()) setSize (getWidth(), h);
+    else resized();
 }
 
 void MidiSkyEditor::resized()
@@ -280,41 +337,40 @@ void MidiSkyEditor::resized()
     proc.editorW.store (getWidth());
     proc.editorH.store (getHeight());
 
-    k = jlimit (0.5f, 2.6f, jmin ((float) getWidth() / 1200.0f, (float) getHeight() / 760.0f));
-    const int m = roundToInt (16.0f * k);
-    const int gap = roundToInt (10.0f * k);
+    k = jlimit (0.45f, 2.6f, jmin ((float) getWidth() / 1200.0f, (float) getHeight() / naturalHeight()));
+    const int m = roundToInt (kMargin * k);
+    const int gap = roundToInt (kGap * k);
 
     auto b = getLocalBounds().reduced (m);
     rail.k = k;
-    rail.setBounds (b.removeFromTop (roundToInt ((vis.hideParams ? 50.0f : 58.0f) * k)));
+    rail.setBounds (b.removeFromTop (roundToInt ((vis.hideParams ? kRailHidden : kRailH) * k)));
     rail.resized();
+    toast.setBounds (getLocalBounds().withY (rail.getBottom() + gap / 2).withHeight (roundToInt (34.0f * jmax (0.8f, k))).reduced (m * 2, 0));
     b.removeFromTop (gap);
 
-    const bool kbDocked = ! keyboard.floating;
-    const bool chordDocked = ! chord.floating;
     std::vector<Section*> atrilItems;
     for (auto* s : std::initializer_list<Section*> { &circle, &score, &tablets })
         if (! s->floating) atrilItems.push_back (s);
+    const bool hasAtril = ! atrilItems.empty();
 
     for (auto* s : sections())
         if (! s->floating) s->k = k;
 
-    if (kbDocked)
+    if (! keyboard.floating)
     {
-        const float share = (atrilItems.empty() && ! chordDocked) ? 1.0f : 0.235f;
-        const int kbH = jlimit (90, jmax (90, roundToInt (330.0f * k)), roundToInt ((float) getHeight() * share));
-        keyboard.setBounds (b.removeFromBottom (jmin (kbH, b.getHeight())));
+        const int kh = (! hasAtril && chord.floating) ? b.getHeight() : roundToInt (kKeysH * k);
+        keyboard.setBounds (b.removeFromBottom (jmin (kh, b.getHeight())));
         b.removeFromBottom (gap);
     }
 
-    if (chordDocked)
+    if (! chord.floating)
     {
-        const int ch = atrilItems.empty() ? b.getHeight() : roundToInt (118.0f * k);
+        const int ch = hasAtril ? roundToInt (kChordH * k) : b.getHeight();
         chord.setBounds (b.removeFromBottom (jmax (0, jmin (ch, b.getHeight()))));
         b.removeFromBottom (gap);
     }
 
-    if (! atrilItems.empty() && b.getHeight() > 60)
+    if (hasAtril && b.getHeight() > 40)
     {
         atrilBounds = b;
         auto inner = b.reduced (roundToInt (14.0f * k), roundToInt (10.0f * k)).withTrimmedBottom (roundToInt (14.0f * k));
@@ -341,17 +397,29 @@ void MidiSkyEditor::resized()
     for (auto* s : sections())
         if (! s->floating) s->resized();
 
+    updateResetButton();
     rebuildBackground();
 }
 
 //==============================================================================
 // Ventanas separadas
 //==============================================================================
+bool MidiSkyEditor::anyFloating()
+{
+    for (auto* s : sections()) if (s->floating) return true;
+    return false;
+}
+
+void MidiSkyEditor::updateResetButton()
+{
+    rail.setShowReset (anyFloating() || prefs->transparent);
+}
+
 Rectangle<int> MidiSkyEditor::defaultFloatBounds (Section& s)
 {
     auto origin = isShowing() ? getScreenPosition() : Point<int> (120, 120);
-    const int w = s.natural.x;
-    const int h = s.natural.y + FloatingShell::headerHeight;
+    const auto size = FloatingShell::windowSizeFor (s);
+    const int w = size.x, h = size.y;
     Rectangle<int> r;
     if (s.id == "teclado")      r = { origin.x + 20, origin.y + getHeight() + 30, w, h };
     else if (s.id == "acorde")  r = { origin.x + 40, origin.y + getHeight() - 60, w, h };
@@ -368,6 +436,7 @@ Rectangle<int> MidiSkyEditor::defaultFloatBounds (Section& s)
 void MidiSkyEditor::detach (Section& s, bool save)
 {
     if (s.floating && windows.count (s.id) > 0) return;
+    const float keepK = k;
 
     auto& st = prefs->floats[s.id];
     auto bounds = st.bounds;
@@ -376,6 +445,7 @@ void MidiSkyEditor::detach (Section& s, bool save)
 
     removeChildComponent (&s);
     auto w = std::make_unique<FloatingWindow> (ctx, s, prefs->transparent, st.onTop, bounds);
+    w->setLookAndFeel (&look);
     const String id = s.id;
     w->onBoundsChanged = [this, id] (Rectangle<int> r)
     {
@@ -392,11 +462,18 @@ void MidiSkyEditor::detach (Section& s, bool save)
                     ed->dock (*sec);
         });
     };
+    w->shell().onRestoreAll = [safe]
+    {
+        MessageManager::callAsync ([safe] { if (auto* ed = safe.getComponent()) ed->resetLayout(); });
+    };
     w->shell().onReset = [this, id]
     {
         if (auto* sec = sectionById (id))
             if (auto* win = windows[id].get())
-                win->setSize (sec->natural.x, sec->natural.y + FloatingShell::headerHeight);
+            {
+                const auto size = FloatingShell::windowSizeFor (*sec);
+                win->setSize (size.x, size.y);
+            }
     };
     w->shell().onTogglePin = [this, id]
     {
@@ -409,18 +486,20 @@ void MidiSkyEditor::detach (Section& s, bool save)
 
     st.floating = true;
     s.refreshControls();
+    rail.splitBtn.setActive (keyboard.floating);
     if (save)
     {
         prefs->save (false);
-        rail.setStatus (s.title + U8 (" está en su propia ventana. Muévela a donde quieras."));
+        toast.show (s.title + U8 (" está en su propia ventana. Para regresar todo, usa Restablecer."));
+        fitHeightToContent (keepK);
     }
-    rail.splitBtn.setActive (keyboard.floating);
-    resized();
+    else resized();
     repaint();
 }
 
 void MidiSkyEditor::dock (Section& s, bool save)
 {
+    const float keepK = k;
     auto it = windows.find (s.id);
     if (it != windows.end())
     {
@@ -429,22 +508,53 @@ void MidiSkyEditor::dock (Section& s, bool save)
     }
     s.floating = false;
     addAndMakeVisible (s);
+    toast.toFront (false);
     prefs->floats[s.id].floating = false;
-    if (save) prefs->save (false);
     s.refreshControls();
     rail.splitBtn.setActive (keyboard.floating);
-    resized();
+    if (save)
+    {
+        prefs->save (false);
+        fitHeightToContent (keepK);
+    }
+    else resized();
+    repaint();
+}
+
+void MidiSkyEditor::resetLayout()
+{
+    const float keepK = k;
+    for (auto* s : sections())
+        if (s->floating) dock (*s, false);
+    for (auto& [id, f] : prefs->floats) { f.floating = false; f.bounds = {}; f.onTop = true; }
+    prefs->transparent = false;
+    prefs->hideParams = false;
+    vis.transparent = false;
+    vis.hideParams = false;
+    prefs->save (false);
+
+    rail.transpBtn.setActive (false);
+    rail.hideBtn.setIcon ("eyeoff");
+    for (auto* s : sections()) s->refreshControls();
+    fitHeightToContent (keepK);
+    toast.show (U8 ("Listo: todo regresó a su lugar"));
     repaint();
 }
 
 void MidiSkyEditor::restoreFloating()
 {
+    bool any = false;
     for (auto* s : sections())
     {
         auto it = prefs->floats.find (s->id);
         if (it != prefs->floats.end() && it->second.floating)
+        {
             detach (*s, false);
+            any = true;
+        }
     }
+    // Que la ventana principal quede del tamaño justo para lo que se quedó en ella
+    if (any) fitHeightToContent (jlimit (0.45f, 2.6f, (float) getWidth() / 1200.0f));
 }
 
 void MidiSkyEditor::recreateFloating()
@@ -464,14 +574,12 @@ void MidiSkyEditor::setTransparent (bool on)
 
     if (on)
     {
-        bool any = false;
-        for (auto* s : sections()) any = any || s->floating;
-        if (! any) { detach (keyboard, true); detach (chord, true); }
-        rail.setStatus (U8 ("Modo transparente: las ventanas separadas no tienen fondo. Ponlas sobre tu video."), 6.0);
+        if (! anyFloating()) { detach (keyboard, true); detach (chord, true); }
+        toast.show (U8 ("Modo transparente: las ventanas separadas no tienen fondo. Ponlas sobre tu video."), 6.0);
     }
     else
     {
-        rail.setStatus (U8 ("Modo transparente apagado"));
+        toast.show (U8 ("Modo transparente apagado"));
     }
     rail.transpBtn.setActive (on);
     for (auto* s : sections()) s->refreshControls();
@@ -481,13 +589,21 @@ void MidiSkyEditor::setTransparent (bool on)
 
 void MidiSkyEditor::setHideParams (bool on)
 {
+    const float keepK = k;
     prefs->hideParams = on;
     vis.hideParams = on;
     prefs->save (false);
     rail.hideBtn.setIcon (on ? "eye" : "eyeoff");
     for (auto* s : sections()) s->refreshControls();
-    resized();
+    fitHeightToContent (keepK);
     repaint();
+}
+
+void MidiSkyEditor::setDayNight (int mode)
+{
+    prefs->dayNight = jlimit (0, 2, mode);
+    prefs->save();
+    toast.show (mode == 0 ? U8 ("Modo día") : (mode == 1 ? U8 ("Modo noche") : U8 ("Modo automático: de día de 7 a 19 h, de noche el resto")));
 }
 
 //==============================================================================
@@ -671,6 +787,7 @@ void MidiSkyEditor::frame()
         stopPreview();
 
     rail.tick (now);
+    toast.tick (now);
 }
 
 void MidiSkyEditor::timerCallback()
@@ -685,6 +802,14 @@ void MidiSkyEditor::timerCallback()
     {
         restoredFloats = true;
         restoreFloating();
+    }
+
+    // Modo automático: revisar la hora de vez en cuando
+    if (++nightCheckCounter >= 12 * 30)
+    {
+        nightCheckCounter = 0;
+        if (prefs->dayNight == 2 && prefs->isNight() != lastNight)
+            refreshPalette();
     }
 }
 
@@ -852,19 +977,16 @@ void MidiSkyEditor::showScaleMenu()
     });
 }
 
-void MidiSkyEditor::showThemeMenu()
+void MidiSkyEditor::showThemePicker()
 {
-    PopupMenu m;
-    m.addSectionHeader ("Tema de luz");
-    const auto& ts = themes();
-    for (int i = 0; i < (int) ts.size(); ++i)
-        m.addItem (1 + i, ts[(size_t) i].name + ": " + ts[(size_t) i].description, true, prefs->theme == ts[(size_t) i].id);
-    m.showMenuAsync (PopupMenu::Options().withTargetComponent (&rail.themeBtn).withMinimumWidth (280), [this] (int r)
+    auto picker = std::make_unique<ThemePicker> (ctx, themeIndex (prefs->theme), prefs->dayNight);
+    picker->onPick = [this] (int i)
     {
-        if (r <= 0) return;
-        prefs->theme = themes()[(size_t) (r - 1)].id;
+        prefs->theme = themes()[(size_t) i].id;
         prefs->save();
-    });
+    };
+    picker->onMode = [this] (int m) { setDayNight (m); };
+    CallOutBox::launchAsynchronously (std::move (picker), getLocalArea (&rail, rail.themeBtn.getBounds()), this);
 }
 
 void MidiSkyEditor::showWindowsMenu()
@@ -876,8 +998,8 @@ void MidiSkyEditor::showWindowsMenu()
         m.addItem (i++, s->title, true, s->floating);
     m.addSeparator();
     m.addItem (50, "Separar todo");
-    m.addItem (51, "Unir todo");
-    m.addItem (52, U8 ("Volver a acomodar las ventanas"));
+    m.addItem (51, U8 ("Restablecer: todo a su lugar"), anyFloating() || prefs->transparent);
+    m.addItem (52, U8 ("Volver a acomodar las ventanas separadas"), anyFloating());
     m.showMenuAsync (PopupMenu::Options().withTargetComponent (&rail.windowsBtn).withMinimumWidth (260), [this] (int r)
     {
         auto secs = sections();
@@ -887,7 +1009,7 @@ void MidiSkyEditor::showWindowsMenu()
             if (s->floating) dock (*s); else detach (*s);
         }
         else if (r == 50) { for (auto* s : secs) if (! s->floating) detach (*s); }
-        else if (r == 51) { for (auto* s : secs) if (s->floating) dock (*s); }
+        else if (r == 51) resetLayout();
         else if (r == 52)
         {
             for (auto* s : secs)
@@ -920,12 +1042,19 @@ void MidiSkyEditor::showMainMenu()
     for (int pct : { 75, 100, 125, 150, 200 })
         size.addItem (300 + pct, String (pct) + " %");
 
+    PopupMenu dn;
+    dn.addItem (30, U8 ("Día"), true, prefs->dayNight == 0);
+    dn.addItem (31, "Noche", true, prefs->dayNight == 1);
+    dn.addItem (32, U8 ("Automático (según la hora)"), true, prefs->dayNight == 2);
+
     PopupMenu m;
+    m.addSubMenu (U8 ("Modo día / noche"), dn);
     m.addSubMenu ("Nombres de las notas", names);
     m.addSubMenu ("Acordes de la tonalidad", chordsM);
     m.addSubMenu ("Color de las teclas", light);
     m.addSubMenu (U8 ("Tamaño de la ventana"), size);
     m.addItem (7, U8 ("Reiniciar detección automática"));
+    m.addItem (15, U8 ("Restablecer diseño (todo a su lugar)"));
     m.addSeparator();
     if (isStandalone()) m.addItem (8, U8 ("Audio y MIDI…"));
     m.addItem (14, "Acerca de MidiSky");
@@ -942,13 +1071,15 @@ void MidiSkyEditor::showMainMenu()
         else if (r == 10 || r == 11) { prefs->latin = (r == 11); prefs->save(); }
         else if (r == 12 || r == 13) { prefs->sevenths = (r == 13); prefs->save(); }
         else if (r == 14) showAbout();
+        else if (r == 15) resetLayout();
+        else if (r >= 30 && r <= 32) setDayNight (r - 30);
         else if (r == 20) { prefs->lightMode = 0; prefs->save(); }
         else if (r == 21) { prefs->lightMode = 2; prefs->save(); }
         else if (r == 22) showLightColourPicker();
         else if (r > 300)
         {
             const float s = (float) (r - 300) / 100.0f;
-            setSize (roundToInt (1200.0f * s), roundToInt (760.0f * s));
+            setSize (roundToInt (1200.0f * s), roundToInt (naturalHeight() * s));
         }
     });
 }
@@ -1016,7 +1147,7 @@ void MidiSkyEditor::showAbout()
 {
     auto opts = MessageBoxOptions()
         .withIconType (MessageBoxIconType::NoIcon)
-        .withTitle ("MidiSky 1.1")
+        .withTitle ("MidiSky 1.2")
         .withMessage (U8 ("Visualizador de escalas, acordes, notas y pentagrama.\n\n"
                           "Piano: Salamander Grand Piano de Alexander Holm (CC BY 3.0).\n"
                           "Notación: basada en la fuente Bravura de Steinberg (SIL OFL).\n"

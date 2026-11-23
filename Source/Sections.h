@@ -64,6 +64,10 @@ public:
 protected:
     PanelKind panelKind() const override { return PanelKind::atril; }
     void paintContent (juce::Graphics&, juce::Rectangle<float>) override;
+
+private:
+    juce::Image paperCache;      // papel y su sombra, ya dibujados
+    juce::String paperKey;
 };
 
 //==============================================================================

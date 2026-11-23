@@ -631,6 +631,301 @@ static std::vector<Skin> buildSkins()
         s.radius = 3.0f;
         v.push_back (s);
     }
+    {
+        Skin s;
+        s.id = "grafito"; s.name = U8 ("Grafito X");
+        s.body = Tex::none; s.paper = Tex::none; s.cheekTex = Tex::none;
+        s.text = juce::Colour (0xffeef1f4);
+        s.dim = juce::Colour (0xff8b939c);
+        s.rail = juce::Colour ((juce::uint8) 34, (juce::uint8) 37, (juce::uint8) 42, 0.94f);
+        s.railBorder = juce::Colour ((juce::uint8) 255, (juce::uint8) 255, (juce::uint8) 255, 0.08f);
+        s.well = juce::Colour (0xff15171a);
+        s.wellBorder = juce::Colour ((juce::uint8) 255, (juce::uint8) 255, (juce::uint8) 255, 0.1f);
+        s.atril = juce::Colour ((juce::uint8) 255, (juce::uint8) 255, (juce::uint8) 255, 0.025f);
+        s.lip = juce::Colour (0xff121417);
+        s.ink = juce::Colour (0xffdfe6ee);
+        s.noteInk = juce::Colour (0xff5cc8ff);
+        s.fall = juce::Colour ((juce::uint8) 10, (juce::uint8) 11, (juce::uint8) 13, 0.6f);
+        s.chord = juce::Colour (0xffffffff);
+        s.accent = juce::Colour (0xff4cc2ff);
+        s.accentInk = juce::Colour (0xff06141c);
+        s.light = juce::Colour (0xff4cc2ff);
+        s.felt = juce::Colour (0xff2a2e34);
+        s.keyBed = juce::Colour (0xff0c0d0f);
+        s.keyWhite = juce::Colour (0xffe8ebef);
+        s.keyShade = juce::Colour (0xffc9ced5);
+        s.keyBlack = juce::Colour (0xff1a1c20);
+        s.keyLabel = juce::Colour (0xff7d858f);
+        s.markOn = juce::Colour (0xff4cc2ff);
+        s.keysBlock = juce::Colour ((juce::uint8) 10, (juce::uint8) 11, (juce::uint8) 13, 0.55f);
+        s.cheek = juce::Colour ((juce::uint8) 255, (juce::uint8) 255, (juce::uint8) 255, 0.03f);
+        s.knob = juce::Colour (0xff2a2e34);
+        s.knobLine = juce::Colour (0xff4cc2ff);
+        s.knobCap = juce::Colour (0xffe8ebef);
+        s.switchOn = juce::Colour (0xff4cc2ff);
+        s.ring = juce::Colour ((juce::uint8) 255, (juce::uint8) 255, (juce::uint8) 255, 0.025f);
+        s.ringLine = juce::Colour ((juce::uint8) 255, (juce::uint8) 255, (juce::uint8) 255, 0.12f);
+        s.region = juce::Colour ((juce::uint8) 76, (juce::uint8) 194, (juce::uint8) 255, 0.18f);
+        s.regionMinor = juce::Colour ((juce::uint8) 76, (juce::uint8) 194, (juce::uint8) 255, 0.1f);
+        s.center = juce::Colour (0xff15171a);
+        s.constLine = juce::Colour ((juce::uint8) 140, (juce::uint8) 220, (juce::uint8) 255, 0.85f);
+        s.tablet = juce::Colour ((juce::uint8) 255, (juce::uint8) 255, (juce::uint8) 255, 0.03f);
+        s.tabletOn = juce::Colour ((juce::uint8) 76, (juce::uint8) 194, (juce::uint8) 255, 0.18f);
+        s.tabletBorder = juce::Colour ((juce::uint8) 255, (juce::uint8) 255, (juce::uint8) 255, 0.08f);
+        s.bodyColour = juce::Colour (0xff1b1d21);
+        s.bodyColour2 = juce::Colour (0xff121316);
+        s.paperColour = juce::Colour (0xff15171a);
+        s.modern = true;
+        s.displayFont = FontKind::sans;
+        s.radius = 3.0f;
+        v.push_back (s);
+    }
+    {
+        Skin s;
+        s.id = "wavetable"; s.name = U8 ("Wavetable");
+        s.body = Tex::none; s.paper = Tex::none; s.cheekTex = Tex::none;
+        s.text = juce::Colour (0xffecebf5);
+        s.dim = juce::Colour (0xff9592ad);
+        s.rail = juce::Colour ((juce::uint8) 40, (juce::uint8) 40, (juce::uint8) 50, 0.92f);
+        s.railBorder = juce::Colour ((juce::uint8) 255, (juce::uint8) 255, (juce::uint8) 255, 0.06f);
+        s.well = juce::Colour (0xff1c1c24);
+        s.wellBorder = juce::Colour ((juce::uint8) 255, (juce::uint8) 255, (juce::uint8) 255, 0.07f);
+        s.atril = juce::Colour ((juce::uint8) 255, (juce::uint8) 255, (juce::uint8) 255, 0.03f);
+        s.lip = juce::Colour (0xff18181e);
+        s.ink = juce::Colour (0xffd9d6f0);
+        s.noteInk = juce::Colour (0xffa690ff);
+        s.fall = juce::Colour ((juce::uint8) 18, (juce::uint8) 18, (juce::uint8) 24, 0.7f);
+        s.chord = juce::Colour (0xfff1eeff);
+        s.accent = juce::Colour (0xff9a7dff);
+        s.accentInk = juce::Colour (0xff120c26);
+        s.light = juce::Colour (0xff3ee6c9);
+        s.felt = juce::Colour (0xff2c2a3a);
+        s.keyBed = juce::Colour (0xff101015);
+        s.keyWhite = juce::Colour (0xffdcdbe6);
+        s.keyShade = juce::Colour (0xffbdbbcc);
+        s.keyBlack = juce::Colour (0xff25242e);
+        s.keyLabel = juce::Colour (0xff7b7894);
+        s.markOn = juce::Colour (0xff9a7dff);
+        s.keysBlock = juce::Colour ((juce::uint8) 18, (juce::uint8) 18, (juce::uint8) 24, 0.6f);
+        s.cheek = juce::Colour ((juce::uint8) 255, (juce::uint8) 255, (juce::uint8) 255, 0.03f);
+        s.knob = juce::Colour (0xff2d2c38);
+        s.knobLine = juce::Colour (0xff3ee6c9);
+        s.knobCap = juce::Colour (0xffecebf5);
+        s.switchOn = juce::Colour (0xff9a7dff);
+        s.ring = juce::Colour ((juce::uint8) 255, (juce::uint8) 255, (juce::uint8) 255, 0.03f);
+        s.ringLine = juce::Colour ((juce::uint8) 255, (juce::uint8) 255, (juce::uint8) 255, 0.1f);
+        s.region = juce::Colour ((juce::uint8) 154, (juce::uint8) 125, (juce::uint8) 255, 0.22f);
+        s.regionMinor = juce::Colour ((juce::uint8) 154, (juce::uint8) 125, (juce::uint8) 255, 0.12f);
+        s.center = juce::Colour (0xff1a1a22);
+        s.constLine = juce::Colour ((juce::uint8) 62, (juce::uint8) 230, (juce::uint8) 201, 0.9f);
+        s.tablet = juce::Colour ((juce::uint8) 255, (juce::uint8) 255, (juce::uint8) 255, 0.035f);
+        s.tabletOn = juce::Colour ((juce::uint8) 154, (juce::uint8) 125, (juce::uint8) 255, 0.22f);
+        s.tabletBorder = juce::Colour ((juce::uint8) 255, (juce::uint8) 255, (juce::uint8) 255, 0.07f);
+        s.bodyColour = juce::Colour (0xff1e1e26);
+        s.bodyColour2 = juce::Colour (0xff15151b);
+        s.paperColour = juce::Colour (0xff1a1a22);
+        s.modern = true;
+        s.displayFont = FontKind::sans;
+        s.radius = 9.0f;
+        v.push_back (s);
+    }
+    {
+        Skin s;
+        s.id = "neon"; s.name = U8 ("Neón");
+        s.body = Tex::none; s.paper = Tex::none; s.cheekTex = Tex::none;
+        s.text = juce::Colour (0xfff4eefc);
+        s.dim = juce::Colour (0xff9a8fb5);
+        s.rail = juce::Colour ((juce::uint8) 14, (juce::uint8) 10, (juce::uint8) 24, 0.92f);
+        s.railBorder = juce::Colour ((juce::uint8) 255, (juce::uint8) 61, (juce::uint8) 154, 0.3f);
+        s.well = juce::Colour (0xff120d1f);
+        s.wellBorder = juce::Colour ((juce::uint8) 45, (juce::uint8) 226, (juce::uint8) 255, 0.25f);
+        s.atril = juce::Colour ((juce::uint8) 10, (juce::uint8) 6, (juce::uint8) 20, 0.5f);
+        s.lip = juce::Colour (0xff0a0614);
+        s.ink = juce::Colour (0xffe8dcff);
+        s.noteInk = juce::Colour (0xffff4fb0);
+        s.fall = juce::Colour ((juce::uint8) 8, (juce::uint8) 5, (juce::uint8) 16, 0.75f);
+        s.chord = juce::Colour (0xff2de2ff);
+        s.accent = juce::Colour (0xffff3d9a);
+        s.accentInk = juce::Colour (0xff1a0410);
+        s.light = juce::Colour (0xff2de2ff);
+        s.felt = juce::Colour (0xffff3d9a);
+        s.keyBed = juce::Colour (0xff05030a);
+        s.keyWhite = juce::Colour (0xffece6f7);
+        s.keyShade = juce::Colour (0xffcfc6e2);
+        s.keyBlack = juce::Colour (0xff140e22);
+        s.keyLabel = juce::Colour (0xff7a6e98);
+        s.markOn = juce::Colour (0xffff3d9a);
+        s.keysBlock = juce::Colour ((juce::uint8) 8, (juce::uint8) 5, (juce::uint8) 16, 0.7f);
+        s.cheek = juce::Colour ((juce::uint8) 20, (juce::uint8) 12, (juce::uint8) 36, 0.7f);
+        s.knob = juce::Colour (0xff1d1530);
+        s.knobLine = juce::Colour (0xff2de2ff);
+        s.knobCap = juce::Colour (0xfff4eefc);
+        s.switchOn = juce::Colour (0xffff3d9a);
+        s.ring = juce::Colour ((juce::uint8) 255, (juce::uint8) 255, (juce::uint8) 255, 0.02f);
+        s.ringLine = juce::Colour ((juce::uint8) 45, (juce::uint8) 226, (juce::uint8) 255, 0.22f);
+        s.region = juce::Colour ((juce::uint8) 255, (juce::uint8) 61, (juce::uint8) 154, 0.22f);
+        s.regionMinor = juce::Colour ((juce::uint8) 45, (juce::uint8) 226, (juce::uint8) 255, 0.12f);
+        s.center = juce::Colour (0xff0d0818);
+        s.constLine = juce::Colour ((juce::uint8) 45, (juce::uint8) 226, (juce::uint8) 255, 0.9f);
+        s.tablet = juce::Colour ((juce::uint8) 255, (juce::uint8) 255, (juce::uint8) 255, 0.03f);
+        s.tabletOn = juce::Colour ((juce::uint8) 255, (juce::uint8) 61, (juce::uint8) 154, 0.22f);
+        s.tabletBorder = juce::Colour ((juce::uint8) 45, (juce::uint8) 226, (juce::uint8) 255, 0.2f);
+        s.bodyColour = juce::Colour (0xff120b22);
+        s.bodyColour2 = juce::Colour (0xff07040f);
+        s.paperColour = juce::Colour (0xff0d0818);
+        s.modern = true;
+        s.displayFont = FontKind::sans;
+        s.radius = 6.0f;
+        v.push_back (s);
+    }
+    {
+        Skin s;
+        s.id = "pulso"; s.name = U8 ("Pulso");
+        s.body = Tex::none; s.paper = Tex::none; s.cheekTex = Tex::none;
+        s.text = juce::Colour (0xffeef0e8);
+        s.dim = juce::Colour (0xff8e9486);
+        s.rail = juce::Colour ((juce::uint8) 30, (juce::uint8) 32, (juce::uint8) 30, 0.94f);
+        s.railBorder = juce::Colour ((juce::uint8) 255, (juce::uint8) 255, (juce::uint8) 255, 0.07f);
+        s.well = juce::Colour (0xff161816);
+        s.wellBorder = juce::Colour ((juce::uint8) 255, (juce::uint8) 255, (juce::uint8) 255, 0.08f);
+        s.atril = juce::Colour ((juce::uint8) 255, (juce::uint8) 255, (juce::uint8) 255, 0.025f);
+        s.lip = juce::Colour (0xff121412);
+        s.ink = juce::Colour (0xffe2e6da);
+        s.noteInk = juce::Colour (0xffc6ff3d);
+        s.fall = juce::Colour ((juce::uint8) 12, (juce::uint8) 13, (juce::uint8) 12, 0.65f);
+        s.chord = juce::Colour (0xffc6ff3d);
+        s.accent = juce::Colour (0xffb8f53a);
+        s.accentInk = juce::Colour (0xff121a02);
+        s.light = juce::Colour (0xffc6ff3d);
+        s.felt = juce::Colour (0xff343832);
+        s.keyBed = juce::Colour (0xff0b0c0b);
+        s.keyWhite = juce::Colour (0xffe9ebe4);
+        s.keyShade = juce::Colour (0xffccd0c4);
+        s.keyBlack = juce::Colour (0xff1b1d1a);
+        s.keyLabel = juce::Colour (0xff7f8578);
+        s.markOn = juce::Colour (0xff9bd62a);
+        s.keysBlock = juce::Colour ((juce::uint8) 12, (juce::uint8) 13, (juce::uint8) 12, 0.55f);
+        s.cheek = juce::Colour ((juce::uint8) 255, (juce::uint8) 255, (juce::uint8) 255, 0.03f);
+        s.knob = juce::Colour (0xff2b2e2a);
+        s.knobLine = juce::Colour (0xffc6ff3d);
+        s.knobCap = juce::Colour (0xffeef0e8);
+        s.switchOn = juce::Colour (0xff9bd62a);
+        s.ring = juce::Colour ((juce::uint8) 255, (juce::uint8) 255, (juce::uint8) 255, 0.025f);
+        s.ringLine = juce::Colour ((juce::uint8) 255, (juce::uint8) 255, (juce::uint8) 255, 0.11f);
+        s.region = juce::Colour ((juce::uint8) 184, (juce::uint8) 245, (juce::uint8) 58, 0.18f);
+        s.regionMinor = juce::Colour ((juce::uint8) 184, (juce::uint8) 245, (juce::uint8) 58, 0.1f);
+        s.center = juce::Colour (0xff161816);
+        s.constLine = juce::Colour ((juce::uint8) 198, (juce::uint8) 255, (juce::uint8) 61, 0.85f);
+        s.tablet = juce::Colour ((juce::uint8) 255, (juce::uint8) 255, (juce::uint8) 255, 0.03f);
+        s.tabletOn = juce::Colour ((juce::uint8) 184, (juce::uint8) 245, (juce::uint8) 58, 0.18f);
+        s.tabletBorder = juce::Colour ((juce::uint8) 255, (juce::uint8) 255, (juce::uint8) 255, 0.08f);
+        s.bodyColour = juce::Colour (0xff1d1f1c);
+        s.bodyColour2 = juce::Colour (0xff131412);
+        s.paperColour = juce::Colour (0xff161816);
+        s.modern = true;
+        s.displayFont = FontKind::sans;
+        s.radius = 5.0f;
+        v.push_back (s);
+    }
+    {
+        Skin s;
+        s.id = "prisma"; s.name = U8 ("Prisma");
+        s.body = Tex::none; s.paper = Tex::none; s.cheekTex = Tex::none;
+        s.text = juce::Colour (0xfff2eef8);
+        s.dim = juce::Colour (0xff9a93ab);
+        s.rail = juce::Colour ((juce::uint8) 28, (juce::uint8) 25, (juce::uint8) 38, 0.94f);
+        s.railBorder = juce::Colour ((juce::uint8) 255, (juce::uint8) 255, (juce::uint8) 255, 0.07f);
+        s.well = juce::Colour (0xff16141e);
+        s.wellBorder = juce::Colour ((juce::uint8) 255, (juce::uint8) 255, (juce::uint8) 255, 0.08f);
+        s.atril = juce::Colour ((juce::uint8) 255, (juce::uint8) 255, (juce::uint8) 255, 0.03f);
+        s.lip = juce::Colour (0xff13111a);
+        s.ink = juce::Colour (0xffe6e0f2);
+        s.noteInk = juce::Colour (0xffff8a4c);
+        s.fall = juce::Colour ((juce::uint8) 14, (juce::uint8) 12, (juce::uint8) 20, 0.7f);
+        s.chord = juce::Colour (0xffffb347);
+        s.accent = juce::Colour (0xffff7a45);
+        s.accentInk = juce::Colour (0xff1c0a02);
+        s.light = juce::Colour (0xffffb347);
+        s.felt = juce::Colour (0xff7c5cff);
+        s.keyBed = juce::Colour (0xff0c0b11);
+        s.keyWhite = juce::Colour (0xffebe8f1);
+        s.keyShade = juce::Colour (0xffcdc8d8);
+        s.keyBlack = juce::Colour (0xff1d1a27);
+        s.keyLabel = juce::Colour (0xff837b97);
+        s.markOn = juce::Colour (0xff7c5cff);
+        s.keysBlock = juce::Colour ((juce::uint8) 14, (juce::uint8) 12, (juce::uint8) 20, 0.6f);
+        s.cheek = juce::Colour ((juce::uint8) 255, (juce::uint8) 255, (juce::uint8) 255, 0.03f);
+        s.knob = juce::Colour (0xff2a2636);
+        s.knobLine = juce::Colour (0xffff7a45);
+        s.knobCap = juce::Colour (0xfff2eef8);
+        s.switchOn = juce::Colour (0xffff7a45);
+        s.ring = juce::Colour ((juce::uint8) 255, (juce::uint8) 255, (juce::uint8) 255, 0.03f);
+        s.ringLine = juce::Colour ((juce::uint8) 255, (juce::uint8) 255, (juce::uint8) 255, 0.1f);
+        s.region = juce::Colour ((juce::uint8) 150, (juce::uint8) 110, (juce::uint8) 255, 0.22f);
+        s.regionMinor = juce::Colour ((juce::uint8) 150, (juce::uint8) 110, (juce::uint8) 255, 0.12f);
+        s.center = juce::Colour (0xff16141e);
+        s.constLine = juce::Colour ((juce::uint8) 255, (juce::uint8) 179, (juce::uint8) 71, 0.9f);
+        s.tablet = juce::Colour ((juce::uint8) 255, (juce::uint8) 255, (juce::uint8) 255, 0.035f);
+        s.tabletOn = juce::Colour ((juce::uint8) 255, (juce::uint8) 122, (juce::uint8) 69, 0.2f);
+        s.tabletBorder = juce::Colour ((juce::uint8) 255, (juce::uint8) 255, (juce::uint8) 255, 0.08f);
+        s.bodyColour = juce::Colour (0xff1a1724);
+        s.bodyColour2 = juce::Colour (0xff100e16);
+        s.paperColour = juce::Colour (0xff16141e);
+        s.modern = true;
+        s.displayFont = FontKind::sans;
+        s.radius = 7.0f;
+        v.push_back (s);
+    }
+    {
+        Skin s;
+        s.id = "cromo"; s.name = U8 ("Cromo");
+        s.body = Tex::none; s.paper = Tex::none; s.cheekTex = Tex::none;
+        s.text = juce::Colour (0xff141516);
+        s.dim = juce::Colour (0xff6c7074);
+        s.rail = juce::Colour ((juce::uint8) 255, (juce::uint8) 255, (juce::uint8) 255, 0.78f);
+        s.railBorder = juce::Colour ((juce::uint8) 0, (juce::uint8) 0, (juce::uint8) 0, 0.08f);
+        s.well = juce::Colour (0xfff4f5f6);
+        s.wellBorder = juce::Colour ((juce::uint8) 0, (juce::uint8) 0, (juce::uint8) 0, 0.1f);
+        s.atril = juce::Colour ((juce::uint8) 255, (juce::uint8) 255, (juce::uint8) 255, 0.45f);
+        s.lip = juce::Colour (0xffc9ccd0);
+        s.ink = juce::Colour (0xff141516);
+        s.noteInk = juce::Colour (0xffff5a1f);
+        s.fall = juce::Colour ((juce::uint8) 255, (juce::uint8) 255, (juce::uint8) 255, 0.72f);
+        s.chord = juce::Colour (0xff141516);
+        s.accent = juce::Colour (0xffff5a1f);
+        s.accentInk = juce::Colour (0xffffffff);
+        s.light = juce::Colour (0xffff5a1f);
+        s.felt = juce::Colour (0xffff5a1f);
+        s.keyBed = juce::Colour (0xff2a2c2f);
+        s.keyWhite = juce::Colour (0xfffbfbfc);
+        s.keyShade = juce::Colour (0xffe6e7e9);
+        s.keyBlack = juce::Colour (0xff1d1e20);
+        s.keyLabel = juce::Colour (0xff9a9ea3);
+        s.markOn = juce::Colour (0xffff5a1f);
+        s.keysBlock = juce::Colour ((juce::uint8) 255, (juce::uint8) 255, (juce::uint8) 255, 0.5f);
+        s.cheek = juce::Colour ((juce::uint8) 255, (juce::uint8) 255, (juce::uint8) 255, 0.6f);
+        s.knob = juce::Colour (0xfff4f5f6);
+        s.knobLine = juce::Colour (0xffff5a1f);
+        s.knobCap = juce::Colour (0xffffffff);
+        s.switchOn = juce::Colour (0xffff5a1f);
+        s.ring = juce::Colour ((juce::uint8) 255, (juce::uint8) 255, (juce::uint8) 255, 0.7f);
+        s.ringLine = juce::Colour ((juce::uint8) 0, (juce::uint8) 0, (juce::uint8) 0, 0.1f);
+        s.region = juce::Colour ((juce::uint8) 255, (juce::uint8) 90, (juce::uint8) 31, 0.14f);
+        s.regionMinor = juce::Colour ((juce::uint8) 255, (juce::uint8) 90, (juce::uint8) 31, 0.08f);
+        s.center = juce::Colour (0xfff4f5f6);
+        s.constLine = juce::Colour ((juce::uint8) 20, (juce::uint8) 21, (juce::uint8) 22, 0.65f);
+        s.tablet = juce::Colour ((juce::uint8) 255, (juce::uint8) 255, (juce::uint8) 255, 0.7f);
+        s.tabletOn = juce::Colour ((juce::uint8) 255, (juce::uint8) 90, (juce::uint8) 31, 0.12f);
+        s.tabletBorder = juce::Colour ((juce::uint8) 0, (juce::uint8) 0, (juce::uint8) 0, 0.08f);
+        s.bodyColour = juce::Colour (0xffdfe1e4);
+        s.bodyColour2 = juce::Colour (0xffd2d5d9);
+        s.paperColour = juce::Colour (0xffffffff);
+        s.modern = true;
+        s.dark = false;
+        s.displayFont = FontKind::sans;
+        s.radius = 6.0f;
+        v.push_back (s);
+    }
     return v;
 }
 
@@ -648,15 +943,123 @@ int skinIndex (const juce::String& id)
     return 0;
 }
 
+namespace
+{
+    using juce::Colour;
+    // Pequeño ayudante para escribir los temas de forma legible
+    struct L
+    {
+        ThemeLook t;
+        L& wash (uint32_t c, float a)                         { t.wash = Colour (c); t.washA = a; return *this; }
+        L& sky (uint32_t top, float ta, uint32_t bot, float ba) { t.skyTop = Colour (top); t.skyTopA = ta; t.skyBottom = Colour (bot); t.skyBottomA = ba; return *this; }
+        L& glow (uint32_t c, float a, float x, float y, float r)  { t.glow = Colour (c); t.glowA = a; t.glowPos = { x, y }; t.glowR = r; return *this; }
+        L& glow2 (uint32_t c, float a, float x, float y, float r) { t.glow2 = Colour (c); t.glow2A = a; t.glow2Pos = { x, y }; t.glow2R = r; return *this; }
+        L& beams (uint32_t c, float a, int n, float angle)    { t.beam = Colour (c); t.beamA = a; t.beams = n; t.beamAngle = angle; return *this; }
+        L& vignette (float v)                                 { t.vignette = v; return *this; }
+        L& motif (Motif m, uint32_t c, float a, int d)        { t.motif = m; t.motifColour = Colour (c); t.motifA = a; t.density = d; return *this; }
+        L& scene (Scene sc, uint32_t c, float a)              { t.scene = sc; t.sceneColour = Colour (c); t.sceneA = a; return *this; }
+        L& disc (uint32_t c, float a, float x, float y, float r, bool ring = false) { t.disc = Colour (c); t.discA = a; t.discPos = { x, y }; t.discR = r; t.ring = ring; return *this; }
+        L& key (uint32_t c)                                   { t.keyLight = Colour (c); t.hasKeyLight = true; return *this; }
+        operator ThemeLook() const { return t; }
+    };
+
+    std::vector<Theme> buildThemes()
+    {
+        std::vector<Theme> v;
+        auto add = [&] (const char* id, const char* name, const char* desc, ThemeLook day, ThemeLook night)
+        {
+            v.push_back ({ id, U8 (name), U8 (desc), day, night });
+        };
+
+        add ("natural", "Natural", "La luz propia de la skin",
+             L(),
+             L().wash (0xff000000, 0.16f).glow (0xffffcd8c, 0.10f, 0.5f, 0.3f, 0.45f).vignette (0.38f));
+
+        add ("fuji", "Fuji al alba", "Cielo rosado y el volcán nevado",
+             L().sky (0xffffb7a1, 0.20f, 0xffffd9b0, 0.03f).glow (0xfffff1d6, 0.22f, 0.84f, 0.06f, 0.55f)
+                .scene (Scene::fuji, 0xff5a6f9e, 0.32f).disc (0xfffff3dc, 0.6f, 0.86f, 0.02f, 0.07f),
+             L().wash (0xff0b1030, 0.22f).sky (0xff1a1f55, 0.25f, 0xffff7a8a, 0.12f).glow (0xffffd7e0, 0.10f, 0.82f, 0.12f, 0.3f)
+                .scene (Scene::fuji, 0xff0a0d22, 0.6f).disc (0xfff4f1ff, 0.6f, 0.86f, 0.02f, 0.06f)
+                .motif (Motif::stars, 0xffffffff, 0.8f, 70).vignette (0.3f).key (0xffff9ab0));
+
+        add ("komorebi", "Komorebi", "Luz que se cuela entre las hojas",
+             L().wash (0xffffb35a, 0.05f).motif (Motif::dapple, 0xffffc878, 0.17f, 6).beams (0xfffff0c8, 0.07f, 4, 24.0f),
+             L().wash (0xff04140e, 0.22f).motif (Motif::fireflies, 0xffd8ff7a, 0.95f, 26).glow (0xffa8d8ff, 0.08f, 0.3f, 0.0f, 0.5f)
+                .vignette (0.36f).key (0xffd8ff7a));
+
+        add ("sakura", "Sakura", "Pétalos cayendo en primavera",
+             L().wash (0xffffd6e4, 0.10f).glow (0xfffff0f5, 0.20f, 0.15f, 0.05f, 0.6f).motif (Motif::petals, 0xffffb7cf, 0.85f, 40),
+             L().wash (0xff1a0a1e, 0.22f).sky (0xff3a1240, 0.2f, 0xffff7fb0, 0.06f).glow (0xffffb27a, 0.14f, 0.12f, 0.2f, 0.35f)
+                .glow2 (0xffff8ab8, 0.10f, 0.85f, 0.15f, 0.4f).motif (Motif::petals, 0xffffc4dc, 0.75f, 40).vignette (0.3f).key (0xffff8ab8));
+
+        add ("murasaki", "Murasaki", "Violeta con un rayo ámbar",
+             L().sky (0xffb9a2ff, 0.16f, 0xff9b7be6, 0.12f).beams (0xffffaa46, 0.16f, 1, 52.0f).key (0xffffb24f),
+             L().sky (0xff4b2c9e, 0.30f, 0xff2c1670, 0.40f).beams (0xffffaa46, 0.22f, 1, 52.0f).motif (Motif::stars, 0xffffe6c8, 0.4f, 25)
+                .vignette (0.25f).key (0xffffb24f));
+
+        add ("aurora", "Aurora boreal", "Cortinas de luz en el cielo polar",
+             L().sky (0xffd8fff1, 0.14f, 0xffbfe6ff, 0.06f).glow (0xffffffff, 0.12f, 0.5f, 0.0f, 0.6f).motif (Motif::aurora, 0xff6dffb0, 0.08f, 3),
+             L().wash (0xff02101a, 0.28f).motif (Motif::aurora, 0xff6dffb0, 0.24f, 3).vignette (0.3f).key (0xff6dffb0));
+
+        add ("tormenta", "Tormenta", "Lluvia, nubes y relámpagos",
+             L().wash (0xff8a97a8, 0.16f).sky (0xff5c6b7d, 0.18f, 0xff5c6b7d, 0.0f).motif (Motif::rain, 0xffe6f0ff, 0.35f, 90).vignette (0.15f),
+             L().wash (0xff050a18, 0.30f).sky (0xff1c2a4a, 0.25f, 0xff000000, 0.0f).glow (0xff9ec3ff, 0.14f, 0.12f, 0.0f, 0.5f)
+                .motif (Motif::lightning, 0xffcfe0ff, 0.45f, 110).vignette (0.4f).key (0xff9ec3ff));
+
+        add ("neon", "Neón Tokio", "Letreros de neón en la ciudad",
+             L().sky (0xffff4fa3, 0.06f, 0xff2de2ff, 0.06f).glow (0xff2de2ff, 0.10f, 1.0f, 0.5f, 0.55f).glow2 (0xffff3d9a, 0.10f, 0.0f, 0.5f, 0.55f)
+                .scene (Scene::city, 0xff2a2440, 0.3f),
+             L().wash (0xff07021a, 0.30f).glow (0xffff2e97, 0.24f, 0.0f, 0.75f, 0.55f).glow2 (0xff19e3ff, 0.20f, 1.0f, 0.25f, 0.55f)
+                .scene (Scene::city, 0xff05030f, 0.75f).motif (Motif::rain, 0xffff6ac1, 0.25f, 50).vignette (0.35f).key (0xffff3d9a));
+
+        add ("bambu", "Bosque de bambú", "Luz verde entre tallos altos",
+             L().wash (0xffc8f0a0, 0.07f).beams (0xfff6ffd8, 0.10f, 5, 14.0f).scene (Scene::bamboo, 0xff2f5a1e, 0.4f),
+             L().wash (0xff031208, 0.30f).beams (0xffb8ffd8, 0.05f, 3, 14.0f).scene (Scene::bamboo, 0xff010a03, 0.75f)
+                .motif (Motif::fireflies, 0xffe4ff8a, 0.9f, 30).vignette (0.4f).key (0xffb6ff6b));
+
+        add ("oceano", "Océano", "Luz bajo el agua y criaturas que brillan",
+             L().sky (0xff9ff3ff, 0.16f, 0xff0b6a8a, 0.14f).beams (0xffe0ffff, 0.10f, 6, -10.0f).motif (Motif::bubbles, 0xffe8ffff, 0.5f, 25),
+             L().wash (0xff00101e, 0.35f).sky (0xff000000, 0.0f, 0xff001a3a, 0.3f).glow (0xff1ad4ff, 0.10f, 0.5f, 1.0f, 0.6f)
+                .motif (Motif::bubbles, 0xff39f3ff, 0.9f, 45).vignette (0.45f).key (0xff39f3ff));
+
+        add ("volcan", "Volcán", "Calor, brasas y lava",
+             L().sky (0xffffcf8a, 0.06f, 0xffff5a1f, 0.18f).glow (0xffffb070, 0.16f, 0.5f, 1.05f, 0.7f).motif (Motif::embers, 0xffffb36b, 0.55f, 30),
+             L().wash (0xff120300, 0.30f).glow (0xffff3d0a, 0.30f, 0.5f, 1.1f, 0.75f).motif (Motif::embers, 0xffffa14a, 1.0f, 70)
+                .vignette (0.45f).key (0xffff6a2a));
+
+        add ("nieve", "Nieve", "Copos cayendo sobre el templo",
+             L().wash (0xfff2f8ff, 0.14f).glow (0xffffffff, 0.20f, 0.5f, 0.0f, 0.7f).motif (Motif::snow, 0xffffffff, 0.85f, 70),
+             L().wash (0xff06122a, 0.26f).sky (0xff1d3566, 0.2f, 0xff000000, 0.0f).glow (0xffcfe3ff, 0.14f, 0.85f, 0.08f, 0.35f)
+                .disc (0xffeef4ff, 0.55f, 0.86f, 0.02f, 0.06f).motif (Motif::snow, 0xffe6f0ff, 0.8f, 80).vignette (0.3f).key (0xff8fc7ff));
+
+        add ("galaxia", "Galaxia", "Nebulosas y un mar de estrellas",
+             L().sky (0xff6b5bd6, 0.14f, 0xffe08ad8, 0.08f).glow (0xffffd2f5, 0.12f, 0.2f, 0.1f, 0.5f).motif (Motif::stars, 0xffffffff, 0.35f, 30),
+             L().wash (0xff04021a, 0.35f).glow (0xff8a4dff, 0.25f, 0.25f, 0.3f, 0.5f).glow2 (0xffff4fb8, 0.18f, 0.8f, 0.7f, 0.5f)
+                .motif (Motif::stars, 0xffffffff, 1.0f, 140).vignette (0.3f).key (0xffc89bff));
+
+        add ("dunas", "Dunas doradas", "Atardecer dorado en el desierto",
+             L().sky (0xffffd98a, 0.14f, 0xffff9a3d, 0.12f).glow (0xfffff0c0, 0.28f, 0.85f, 0.15f, 0.5f)
+                .scene (Scene::dunes, 0xffc27a35, 0.35f).disc (0xfffff4d0, 0.7f, 0.86f, 0.02f, 0.08f),
+             L().wash (0xff0c0a1e, 0.26f).sky (0xff1b1640, 0.25f, 0xff4a2a3a, 0.12f).glow (0xfffff2d8, 0.16f, 0.15f, 0.12f, 0.32f)
+                .scene (Scene::dunes, 0xff0d0a18, 0.7f).disc (0xfffff6e6, 0.6f, 0.14f, 0.02f, 0.06f)
+                .motif (Motif::stars, 0xffffffff, 0.7f, 60).key (0xffffcf6b));
+
+        add ("eclipse", "Eclipse", "Un anillo de fuego en el cielo oscuro",
+             L().wash (0xff000000, 0.12f).glow (0xffffcc66, 0.12f, 0.5f, 0.0f, 0.45f).disc (0xffffd27a, 0.7f, 0.5f, -0.12f, 0.12f, true).vignette (0.25f),
+             L().wash (0xff000000, 0.30f).glow (0xffff7a1a, 0.18f, 0.5f, 0.0f, 0.5f).disc (0xffff9a3a, 1.0f, 0.5f, -0.12f, 0.12f, true)
+                .motif (Motif::stars, 0xffffffff, 0.5f, 40).vignette (0.5f).key (0xffffb347));
+
+        add ("linternas", "Linternas", "Faroles de papel flotando",
+             L().wash (0xffffe0b0, 0.08f).glow (0xffffd08a, 0.14f, 0.5f, 0.0f, 0.6f).motif (Motif::lanterns, 0xffff9a3d, 0.45f, 10),
+             L().wash (0xff0e0510, 0.30f).glow (0xffff8a3a, 0.16f, 0.5f, 1.0f, 0.7f).motif (Motif::lanterns, 0xffffa040, 1.0f, 16)
+                .vignette (0.35f).key (0xffffa040));
+        return v;
+    }
+}
+
 const std::vector<Theme>& themes()
 {
-    static const std::vector<Theme> t {
-        { "natural",  "Natural",  U8 ("La luz propia de la skin") },
-        { "manana",   U8 ("Mañana"), U8 ("Luz fresca y clara") },
-        { "tarde",    "Tarde",    U8 ("Luz cálida entre las hojas") },
-        { "murasaki", "Murasaki", U8 ("Violeta con un rayo ámbar") },
-        { "noche",    "Noche",    U8 ("Oscuro, con luz de lámpara") },
-    };
+    static const std::vector<Theme> t = buildThemes();
     return t;
 }
 
@@ -666,6 +1069,12 @@ int themeIndex (const juce::String& id)
     for (int i = 0; i < (int) t.size(); ++i)
         if (t[(size_t) i].id == id) return i;
     return 0;
+}
+
+const ThemeLook& Palette::look() const
+{
+    const auto& t = themes()[(size_t) juce::jlimit (0, (int) themes().size() - 1, themeIdx)];
+    return night ? t.night : t.day;
 }
 
 juce::Colour Palette::noteColour (int midiNote) const
@@ -694,6 +1103,11 @@ Prefs::Prefs()
 
     skin        = file->getValue ("skinId", "nogal");
     theme       = file->getValue ("theme", "natural");
+    dayNight    = juce::jlimit (0, 2, file->getIntValue ("dayNight", -1));
+    // Temas de la versión 1.1
+    if (! file->containsKey ("dayNight")) dayNight = (theme == "noche") ? 1 : 0;
+    if (theme == "manana" || theme == "noche") theme = "natural";
+    if (theme == "tarde") theme = "komorebi";
     lightMode   = juce::jlimit (0, 2, file->getIntValue ("lightMode", 0));
     lightCustom = juce::Colour::fromString (file->getValue ("lightCustom", "ff7fb8ff"));
     latin       = file->getBoolValue ("latin", false);
@@ -729,6 +1143,7 @@ void Prefs::save (bool notify)
 {
     file->setValue ("skinId", skin);
     file->setValue ("theme", theme);
+    file->setValue ("dayNight", dayNight);
     file->setValue ("lightMode", lightMode);
     file->setValue ("lightCustom", lightCustom.toString());
     file->setValue ("latin", latin);
@@ -760,7 +1175,20 @@ Palette Prefs::palette() const
     static_cast<Skin&> (p) = skins()[(size_t) skinIndex (skin)];
     p.theme = theme;
     p.lightMode = lightMode;
+    p.themeIdx = themeIndex (theme);
+    p.night = isNight();
     if (lightMode == 1) p.light = lightCustom;
-    if (theme == "murasaki" && lightMode == 0) p.light = juce::Colour (0xffffb24f);
+    else if (lightMode == 0 && p.look().hasKeyLight) p.light = p.look().keyLight;
     return p;
+}
+
+bool Prefs::isNight() const
+{
+    if (dayNight == 1) return true;
+    if (dayNight == 2)
+    {
+        const int h = juce::Time::getCurrentTime().getHours();
+        return h >= 19 || h < 7;
+    }
+    return false;
 }

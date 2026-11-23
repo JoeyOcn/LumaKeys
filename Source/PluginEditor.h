@@ -15,6 +15,7 @@ public:
     juce::Font getTextButtonFont (juce::TextButton&, int h) override { return fonts.ui (juce::jmin (15.0f, (float) h * 0.55f), 1); }
     juce::Font getLabelFont (juce::Label&) override { return fonts.ui (14.0f, 0); }
     void drawCallOutBoxBackground (juce::CallOutBox&, juce::Graphics&, const juce::Path&, juce::Image&) override;
+    void drawCornerResizer (juce::Graphics&, int w, int h, bool isMouseOver, bool isMouseDragging) override;
 
 private:
     Fonts& fonts;
@@ -55,13 +56,19 @@ private:
     juce::Rectangle<int> defaultFloatBounds (Section& s);
     void setTransparent (bool on);
     void setHideParams (bool on);
+    void resetLayout();                  // todo regresa a su lugar
+    void fitHeightToContent (float keepK);
+    float naturalHeight() const;         // alto ideal a escala 1 según lo que esté en la ventana
+    bool anyFloating();
+    void updateResetButton();
+    void setDayNight (int mode);
 
     // Menús
     void showKeyMenu();
     void showScaleMenu();
     void showMainMenu();
     void showMidiMenu();
-    void showThemeMenu();
+    void showThemePicker();
     void showWindowsMenu();
     void showSkinPicker();
     void showLatencyPanel();
@@ -84,6 +91,7 @@ private:
     UiContext ctx { vis, *fonts, *textures };
 
     RailBar rail { ctx };
+    Toast toast { ctx };
     CircleSection circle { ctx };
     ScoreSection score { ctx };
     TabletsSection tablets { ctx };
@@ -94,7 +102,10 @@ private:
     juce::Component::SafePointer<juce::ColourSelector> colourSelector;
 
     juce::Image background;
+    ThemeCache themeCache;
     juce::Rectangle<int> atrilBounds;
+    bool lastNight = false;
+    int nightCheckCounter = 0;
     float k = 1.0f;
 
     std::unique_ptr<juce::VBlankAttachment> vblank;

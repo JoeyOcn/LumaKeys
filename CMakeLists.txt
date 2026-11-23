@@ -10,7 +10,7 @@ if(APPLE)
     endif()
 endif()
 
-project(MidiSky VERSION 1.1.0 LANGUAGES C CXX)
+project(MidiSky VERSION 1.2.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -59,6 +59,7 @@ target_sources(MidiSky PRIVATE
     Source/Views.cpp
     Source/Sections.cpp
     Source/Floating.cpp
+    Source/ThemeArt.cpp
     Source/Style.cpp)
 
 file(GLOB MIDISKY_PIANO_SAMPLES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/assets/piano/*.ogg)

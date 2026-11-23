@@ -58,22 +58,47 @@ struct Skin
     bool ornate = false;    // doble filete (Vintage)
     bool vfd = false;       // pantalla tipo display ámbar (Retro)
     bool lacquer = false;   // reflejo de laca (Laca y oro)
+    bool modern = false;    // estilo sintetizador moderno: plano, rejilla fina, perillas con arco
     bool dark = true;       // la skin es oscura (para textos sobre el cuerpo)
 };
 
 const std::vector<Skin>& skins();
 int skinIndex (const juce::String& id);
 
-// Un tema es la luz del ambiente: se aplica encima de cualquier skin.
-struct Theme { juce::String id, name, description; };
+// Un tema es la luz del ambiente: se aplica encima de cualquier skin, con versión de día y de noche.
+enum class Motif { none, stars, petals, snow, rain, fireflies, bubbles, embers, lanterns, dapple, aurora, lightning };
+enum class Scene { none, fuji, city, bamboo, dunes };
+
+struct ThemeLook
+{
+    juce::Colour wash;      float washA = 0.0f;                        // velo de color parejo
+    juce::Colour skyTop, skyBottom; float skyTopA = 0.0f, skyBottomA = 0.0f; // degradado vertical
+    juce::Colour glow;      float glowA = 0.0f;  juce::Point<float> glowPos { 0.5f, 0.0f };  float glowR = 0.5f;
+    juce::Colour glow2;     float glow2A = 0.0f; juce::Point<float> glow2Pos { 0.5f, 1.0f }; float glow2R = 0.5f;
+    juce::Colour beam;      float beamA = 0.0f;  int beams = 0; float beamAngle = 20.0f;   // rayos de luz
+    float vignette = 0.0f;
+    Motif motif = Motif::none; juce::Colour motifColour; float motifA = 0.0f; int density = 0;  // partículas encima
+    Scene scene = Scene::none; juce::Colour sceneColour; float sceneA = 0.0f;                 // paisaje al fondo
+    juce::Colour disc;      float discA = 0.0f;  juce::Point<float> discPos { 0.82f, 0.14f }; float discR = 0.06f; bool ring = false; // sol, luna o eclipse
+    juce::Colour keyLight;  bool hasKeyLight = false;                   // color de las teclas encendidas
+
+    bool isEmpty() const { return washA <= 0 && skyTopA <= 0 && skyBottomA <= 0 && glowA <= 0 && glow2A <= 0
+                                  && beamA <= 0 && vignette <= 0 && discA <= 0 && motif == Motif::none; }
+    bool hasBackground() const { return scene != Scene::none; }
+};
+
+struct Theme { juce::String id, name, description; ThemeLook day, night; };
 const std::vector<Theme>& themes();
 int themeIndex (const juce::String& id);
 
 struct Palette : Skin
 {
     juce::String theme = "natural";
-    int lightMode = 0;            // 0 color de la skin, 1 color propio, 2 arcoíris
+    int themeIdx = 0;
+    bool night = false;
+    int lightMode = 0;            // 0 color de la skin (o del tema), 1 color propio, 2 arcoíris
     juce::Colour noteColour (int midiNote) const;
+    const ThemeLook& look() const;
 };
 
 //==============================================================================
@@ -94,6 +119,7 @@ public:
 
     juce::String skin = "nogal";
     juce::String theme = "natural";
+    int dayNight = 0;             // 0 día, 1 noche, 2 automático (según la hora)
     int lightMode = 0;
     juce::Colour lightCustom { 0xff7fb8ff };
     bool latin = false;
@@ -107,6 +133,7 @@ public:
 
     void save (bool notify = true);
     Palette palette() const;
+    bool isNight() const;
 
 private:
     std::unique_ptr<juce::PropertiesFile> file;
